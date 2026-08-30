@@ -1,0 +1,98 @@
+name: Bug Report
+description: Report an app bug or crash
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill in as much detail as possible so we can reproduce and fix it.
+
+        > **Note**
+        > Do not submit AI-generated issues — they will be closed without review.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: Describe the issue in detail, including steps to reproduce.
+      placeholder: |
+        1. Go to ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Attach relevant screenshots or screen recordings here.
+    validations:
+      required: false
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: e.g. OpenAI, Anthropic, Google, local deployment
+      placeholder: OpenAI
+    validations:
+      required: false
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: e.g. gpt-4o, claude-3-5-sonnet
+      placeholder: gpt-4o
+    validations:
+      required: false
+
+  - type: dropdown
+    id: api-type
+    attributes:
+      label: API Type
+      description: The API protocol type being used
+      options:
+        - OpenAI ChatCompletion
+        - Response API
+        - Google Gemini
+        - Anthropic
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App Version
+      description: e.g. v1.2.3
+      placeholder: v1.2.3
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android Version
+      description: e.g. Android 14
+      placeholder: Android 14
+    validations:
+      required: true
+
+  - type: input
+    id: device-model
+    attributes:
+      label: Device Model
+      description: e.g. Pixel 8
+      placeholder: Pixel 8
+    validations:
+      required: true

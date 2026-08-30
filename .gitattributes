@@ -1,0 +1,2 @@
+# Generated baseline profile files: mark as text with LF endings to avoid CRLF churn
+app/src/release/generated/baselineProfiles/*.txt text eol=lf
