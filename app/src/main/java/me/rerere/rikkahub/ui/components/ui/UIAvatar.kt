@@ -357,6 +357,10 @@ private fun ProceduralAvatar(name: String, modifier: Modifier = Modifier) {
 }
 
 private fun vercelAvatarColors(name: String): Pair<Color, Color> {
+    // SHA-1 preserves the original per-user hue mapping. Do not migrate to
+    // SHA-256 without a one-time palette re-derivation: the hue comes from
+    // the sum of digest bytes, so changing the digest silently reshuffles
+    // colors for every existing assistant / conversation.
     val bytes = MessageDigest.getInstance("SHA-1").digest(name.toByteArray(Charsets.UTF_8))
     val sum = bytes.fold(0) { acc, b -> acc + (b.toInt() and 0xFF) }
     val hue = (sum % 360).toFloat()

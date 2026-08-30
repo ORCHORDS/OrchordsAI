@@ -16,22 +16,19 @@ afterEach(async () => {
 });
 
 describe("recordTrace", () => {
-  test("records a local SSE response without writing the API key", async () => {
+  test("records an SSE response without writing the API key", async () => {
     const authorizationHeaders: Array<string | null> = [];
-    const server = Bun.serve({
-      port: 0,
-      fetch(request) {
-        authorizationHeaders.push(request.headers.get("authorization"));
-        return new Response([
-          "event: response.output_text.delta\n",
-          "data: {\"delta\":\"hello\"}\n\n",
-          "event: response.completed\n",
-          "data: {\"type\":\"response.completed\"}\n\n",
-        ].join(""), {
-          headers: { "Content-Type": "text/event-stream" },
-        });
-      },
-    });
+    const request = async (_url: string | URL, init: RequestInit) => {
+      authorizationHeaders.push(new Headers(init.headers).get("authorization"));
+      return new Response([
+        "event: response.output_text.delta\n",
+        "data: {\"delta\":\"hello\"}\n\n",
+        "event: response.completed\n",
+        "data: {\"type\":\"response.completed\"}\n\n",
+      ].join(""), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
 
     try {
       const directory = await mkdtemp(join(tmpdir(), "rikkahub-trace-cli-"));
@@ -43,7 +40,7 @@ describe("recordTrace", () => {
         provider: "openai-responses",
         model: "test-model",
         apiKeyEnv: "TRACE_TEST_API_KEY",
-        baseUrl: server.url.toString(),
+        baseUrl: "https://example.com/",
         endpoint: "/trace",
         headers: {},
         body: { input: "hello" },
@@ -51,7 +48,7 @@ describe("recordTrace", () => {
         timeoutMs: 5_000,
       };
 
-      expect(await recordTrace(trace, false)).toBe(2);
+      expect(await recordTrace(trace, false, request)).toBe(2);
       expect(authorizationHeaders).toEqual(["Bearer test-secret"]);
       const output = await readFile(outputPath, "utf8");
       expect(output).not.toContain("test-secret");
@@ -66,7 +63,40 @@ describe("recordTrace", () => {
         },
       ]);
     } finally {
-      server.stop(true);
+      delete process.env.TRACE_TEST_API_KEY;
+    }
+  });
+
+  test("normalizes node http AbortError into a timeout error", async () => {
+    // Simulate the real node:http behavior on signal-aborted requests: a
+    // plain Error with .name === "AbortError" and .code === "ABORT_ERR".
+    const abortError: NodeJS.ErrnoException = new Error("aborted");
+    abortError.name = "AbortError";
+    abortError.code = "ABORT_ERR";
+    const request = async () => {
+      throw abortError;
+    };
+
+    const trace: LoadedTraceCase = {
+      name: "timeout-test",
+      provider: "openai-responses",
+      model: "test-model",
+      apiKeyEnv: "TRACE_TEST_API_KEY",
+      baseUrl: "https://example.com/",
+      endpoint: "/trace",
+      headers: {},
+      body: { input: "hello" },
+      outputPath: join(tmpdir(), "never-written.jsonl"),
+      timeoutMs: 250,
+    };
+
+    process.env.TRACE_TEST_API_KEY = "test-secret";
+    try {
+      await expect(recordTrace(trace, false, request)).rejects.toThrow(
+        /timed out after 250ms/,
+      );
+    } finally {
+      delete process.env.TRACE_TEST_API_KEY;
     }
   });
 });

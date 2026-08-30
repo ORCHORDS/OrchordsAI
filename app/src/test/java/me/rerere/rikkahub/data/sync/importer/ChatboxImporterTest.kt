@@ -47,20 +47,9 @@ class ChatboxImporterTest {
             )
             zip.writeEntry(
                 "settings.json",
-                """
-                {
-                  "providers": {
-                    "deepseek": {
-                      "apiKey": "test-key",
-                      "models": [{
-                        "modelId": "deepseek-test",
-                        "nickname": "DeepSeek Test",
-                        "capabilities": ["vision", "tool_use", "reasoning"]
-                      }]
-                    }
-                  }
-                }
-                """.trimIndent().encodeToByteArray(),
+                requireNotNull(javaClass.getResourceAsStream("/chatbox/settings-template.json")) {
+                    "Missing Chatbox settings fixture"
+                }.use { it.readBytes() },
             )
             zip.writeEntry(
                 "sessions/test-session/session.json",

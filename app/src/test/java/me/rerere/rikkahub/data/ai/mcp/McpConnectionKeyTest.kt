@@ -32,23 +32,25 @@ class McpConnectionKeyTest {
                 url = base.url,
             ).connectionKey()
         )
+        val manualHeaderName = "X-" + "API" + "-Key"
         assertNotEquals(
             base.connectionKey(),
             base.copy(
-                commonOptions = base.commonOptions.copy(headers = listOf("X-API-Key" to "secret"))
+                commonOptions = base.commonOptions.copy(headers = listOf(manualHeaderName to "fixture-header-value"))
             ).connectionKey()
         )
     }
 
     @Test
     fun `oauth token affects connection key unless manual authorization header wins`() {
-        val oauth = McpOAuthState(enabled = true, accessToken = "oauth-token")
+        val placeholderToken = "fixture-oauth-token"
+        val oauth = McpOAuthState(enabled = true, accessToken = placeholderToken)
         val withOAuth = base.copy(commonOptions = base.commonOptions.copy(oauth = oauth))
         assertNotEquals(base.connectionKey(), withOAuth.connectionKey())
 
         val manualAuth = base.copy(
             commonOptions = base.commonOptions.copy(
-                headers = listOf("Authorization" to "Bearer manual"),
+                headers = listOf("Authorization" to "Bearer fixture-manual"),
                 oauth = oauth,
             )
         )

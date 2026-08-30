@@ -11,10 +11,11 @@ class TTSProviderSettingElevenLabsTest {
 
     @Test
     fun testElevenLabsSerialization() {
+        val placeholderKey = "fixture-elevenlabs-key"
         val setting = TTSProviderSetting.ElevenLabs(
             id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
             name = "Test ElevenLabs",
-            apiKey = "test-key",
+            apiKey = placeholderKey,
             baseUrl = "https://api.elevenlabs.io",
             model = "eleven_v3",
             voiceId = "test-voice-id",
@@ -24,7 +25,7 @@ class TTSProviderSettingElevenLabsTest {
 
         val encoded = json.encodeToString(TTSProviderSetting.serializer(), setting)
         assertTrue(encoded.contains("\"elevenlabs\""))
-        assertTrue(encoded.contains("\"test-key\""))
+        assertTrue(encoded.contains("\"$placeholderKey\""))
         assertTrue(encoded.contains("\"eleven_v3\""))
 
         val decoded = json.decodeFromString(

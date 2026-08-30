@@ -4,8 +4,62 @@ from pathlib import Path
 from lxml import etree
 
 
+# Module-level resolver counter. Tests inspect this to prove that the
+# parser would have refused an external-resource lookup, rather than
+# relying on the parser silently ignoring it.
+_external_resolution_attempts = 0
+
+
+class _DenyExternalResolver(etree.Resolver):
+    """lxml resolver that refuses every external-resource lookup.
+
+    Installed at parse time so that any attempt to fetch an entity from
+    the file system, network, or elsewhere raises an XMLSyntaxError.
+    """
+
+    def resolve(self, system_url, public_id, type, context):  # type: ignore[override]
+        global _external_resolution_attempts
+        _external_resolution_attempts += 1
+        raise etree.XMLSyntaxError(
+            f"external resource resolution denied: {system_url}",
+            0,
+            0,
+            0,
+        )
+
+
+def _reset_resolution_counter_for_tests() -> int:
+    """Reset and return the previous counter. Intended for unit tests only."""
+    global _external_resolution_attempts
+    previous = _external_resolution_attempts
+    _external_resolution_attempts = 0
+    return previous
+
+
 class StringsXmlParser:
     """Android strings.xml parser."""
+
+    @staticmethod
+    def _parse_tree(file_path: Path) -> etree._ElementTree:
+        """Parse XML without loading DTDs, networks, or expanding entities."""
+        parser = etree.XMLParser(
+            load_dtd=False,
+            no_network=True,
+            resolve_entities=False,
+        )
+        # Install a denying resolver at parse time so any external-entity
+        # lookup raises instead of silently succeeding via the default
+        # resolver chain.
+        resolver = _DenyExternalResolver()
+        parser.resolvers.add(resolver)
+        try:
+            root = etree.fromstring(file_path.read_bytes(), parser)
+        finally:
+            parser.resolvers.remove(resolver)
+        tree = etree.ElementTree(root)
+        if tree.docinfo.doctype:
+            raise etree.XMLSyntaxError("DOCTYPE is not allowed", 0, 0, 0)
+        return tree
 
     @staticmethod
     def parse(file_path: Path) -> dict[str, str]:
@@ -14,8 +68,7 @@ class StringsXmlParser:
             return {}
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                tree = etree.parse(f)
+            tree = StringsXmlParser._parse_tree(file_path)
             root = tree.getroot()
             result = {}
 
@@ -63,8 +116,7 @@ class StringsXmlParser:
             StringsXmlParser.write(file_path, {key: value})
             return
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            tree = etree.parse(f)
+        tree = StringsXmlParser._parse_tree(file_path)
         root = tree.getroot()
 
         # Find existing entry
@@ -98,8 +150,7 @@ class StringsXmlParser:
         if not file_path.exists():
             return False
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            tree = etree.parse(f)
+        tree = StringsXmlParser._parse_tree(file_path)
         root = tree.getroot()
 
         for string_elem in root.findall("string"):

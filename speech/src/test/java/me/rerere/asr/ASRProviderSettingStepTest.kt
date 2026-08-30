@@ -28,8 +28,9 @@ class ASRProviderSettingStepTest {
 
     @Test
     fun step_copy_provider_preserves_extra_fields() {
+        val placeholderKey = "fixture-step-value"
         val original = ASRProviderSetting.Step(
-            apiKey = "sk-test",
+            apiKey = placeholderKey,
             baseUrl = "https://api.stepfun.ai",
             model = "stepaudio-2-asr-pro",
             language = "zh",
@@ -44,7 +45,7 @@ class ASRProviderSettingStepTest {
         assertTrue(copied is ASRProviderSetting.Step)
         val step = copied as ASRProviderSetting.Step
         assertEquals("renamed", step.name)
-        assertEquals("sk-test", step.apiKey)
+        assertEquals(placeholderKey, step.apiKey)
         assertEquals("https://api.stepfun.ai", step.baseUrl)
         assertEquals("stepaudio-2-asr-pro", step.model)
         assertEquals("zh", step.language)

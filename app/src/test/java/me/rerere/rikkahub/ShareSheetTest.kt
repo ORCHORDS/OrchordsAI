@@ -3,6 +3,14 @@ package me.rerere.rikkahub
 import me.rerere.ai.provider.BalanceOption
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.rikkahub.testsupport.CLAUDE_KEY
+import me.rerere.rikkahub.testsupport.GOOGLE_KEY
+import me.rerere.rikkahub.testsupport.OPENAI_KEY
+import me.rerere.rikkahub.testsupport.PROXY_KEY
+import me.rerere.rikkahub.testsupport.SHARED_KEY
+import me.rerere.rikkahub.testsupport.claudeWith
+import me.rerere.rikkahub.testsupport.googleWith
+import me.rerere.rikkahub.testsupport.openAiWith
 import me.rerere.rikkahub.ui.components.ui.decodeProviderSetting
 import me.rerere.rikkahub.ui.components.ui.encodeForShare
 import org.junit.Assert.assertEquals
@@ -14,6 +22,7 @@ class ShareSheetTest {
     @Test
     fun `share round trip should restore OpenAI settings without models`() {
         val originalId = Uuid.random()
+        val key = OPENAI_KEY
         val original = ProviderSetting.OpenAI(
             id = originalId,
             enabled = true,
@@ -24,12 +33,13 @@ class ShareSheetTest {
                     displayName = "gpt-4",
                 )
             ),
-            apiKey = "sk-test-key",
-            baseUrl = "https://api.openai.com/v1",
             chatCompletionsPath = "/chat/completions",
             useResponseApi = false,
             balanceOption = BalanceOption(enabled = false)
-        )
+        ).apply {
+            apiKey = key
+            baseUrl = "https://api.openai.com/v1"
+        }
 
         val encoded = original.encodeForShare()
         val decoded = decodeProviderSetting(encoded)
@@ -38,7 +48,7 @@ class ShareSheetTest {
         val decodedOpenAI = decoded as ProviderSetting.OpenAI
         assertEquals(originalId, decodedOpenAI.id)
         assertEquals("Test OpenAI", decodedOpenAI.name)
-        assertEquals("sk-test-key", decodedOpenAI.apiKey)
+        assertEquals(key, decodedOpenAI.apiKey)
         assertEquals("https://api.openai.com/v1", decodedOpenAI.baseUrl)
         assertTrue(decodedOpenAI.models.isEmpty())
     }
@@ -46,15 +56,17 @@ class ShareSheetTest {
     @Test
     fun `decode should restore Google provider correctly`() {
         val originalId = Uuid.random()
+        val key = GOOGLE_KEY
         val original = ProviderSetting.Google(
             id = originalId,
             enabled = true,
             name = "Test Google",
             models = emptyList(),
-            apiKey = "test-google-key",
-            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
             vertexAI = false
-        )
+        ).apply {
+            apiKey = key
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta"
+        }
 
         val encoded = original.encodeForShare()
         val decoded = decodeProviderSetting(encoded)
@@ -63,21 +75,23 @@ class ShareSheetTest {
         val decodedGoogle = decoded as ProviderSetting.Google
         assertEquals(originalId, decodedGoogle.id)
         assertEquals("Test Google", decodedGoogle.name)
-        assertEquals("test-google-key", decodedGoogle.apiKey)
+        assertEquals(key, decodedGoogle.apiKey)
         assertEquals(false, decodedGoogle.vertexAI)
     }
 
     @Test
     fun `decode should restore Claude provider correctly`() {
         val originalId = Uuid.random()
+        val key = CLAUDE_KEY
         val original = ProviderSetting.Claude(
             id = originalId,
             enabled = false,
             name = "Test Claude",
-            models = emptyList(),
-            apiKey = "test-claude-key",
+            models = emptyList()
+        ).apply {
+            apiKey = key
             baseUrl = "https://api.anthropic.com/v1"
-        )
+        }
 
         val encoded = original.encodeForShare()
         val decoded = decodeProviderSetting(encoded)
@@ -86,18 +100,15 @@ class ShareSheetTest {
         val decodedClaude = decoded as ProviderSetting.Claude
         assertEquals(originalId, decodedClaude.id)
         assertEquals("Test Claude", decodedClaude.name)
-        assertEquals("test-claude-key", decodedClaude.apiKey)
+        assertEquals(key, decodedClaude.apiKey)
         assertEquals(false, decodedClaude.enabled)
     }
 
     @Test
     fun `decode should handle balance option`() {
-        val original = ProviderSetting.OpenAI(
-            id = Uuid.random(),
-            enabled = true,
+        val original = openAiWith(
             name = "Test with Balance",
-            models = emptyList(),
-            apiKey = "test-key",
+            key = PROXY_KEY,
             baseUrl = "https://api.test.com",
             balanceOption = BalanceOption(
                 enabled = true,
@@ -132,21 +143,10 @@ class ShareSheetTest {
     @Test
     fun `encode and decode should be reversible`() {
         val providers = listOf(
-            ProviderSetting.OpenAI(
-                name = "OpenAI Test",
-                apiKey = "key1",
-                baseUrl = "url1"
-            ),
-            ProviderSetting.Google(
-                name = "Google Test",
-                apiKey = "key2",
-                vertexAI = true,
-                projectId = "project-123"
-            ),
-            ProviderSetting.Claude(
-                name = "Claude Test",
-                apiKey = "key3"
-            )
+            openAiWith(name = "OpenAI Test", key = SHARED_KEY + "-1", baseUrl = "url1"),
+            googleWith(name = "Google Test", key = SHARED_KEY + "-2", baseUrl = "url2")
+                .also { it.vertexAI = true; it.projectId = "project-123" },
+            claudeWith(name = "Claude Test", key = SHARED_KEY + "-3", baseUrl = "url3"),
         )
 
         providers.forEach { original ->

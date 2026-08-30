@@ -1,10 +1,15 @@
 import { access, mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { buildProviderRequest, defaultApiKeyEnv } from "./providers";
+import { requestPublicUrl } from "./ssrf";
 import { parseSseStream } from "./sse";
 import type { LoadedTraceCase } from "./types";
 
-export async function recordTrace(trace: LoadedTraceCase, force: boolean): Promise<number> {
+export async function recordTrace(
+  trace: LoadedTraceCase,
+  force: boolean,
+  makeRequest: typeof requestPublicUrl = requestPublicUrl,
+): Promise<number> {
   const apiKeyEnv = trace.apiKeyEnv ?? defaultApiKeyEnv(trace.provider);
   const apiKey = process.env[apiKeyEnv];
   if (!apiKey) {
@@ -22,7 +27,7 @@ export async function recordTrace(trace: LoadedTraceCase, force: boolean): Promi
   let handle: Awaited<ReturnType<typeof open>> | undefined;
 
   try {
-    const response = await fetch(request.url, {
+    const response = await makeRequest(request.url, {
       method: "POST",
       headers: request.headers,
       body: JSON.stringify(request.body),
@@ -55,13 +60,23 @@ export async function recordTrace(trace: LoadedTraceCase, force: boolean): Promi
   } catch (error) {
     await handle?.close().catch(() => undefined);
     await rm(temporaryPath, { force: true });
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error)) {
       throw new Error(`${trace.name}: request timed out after ${trace.timeoutMs}ms`);
     }
     throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // node:http / node:https signal-aborted requests emit an Error with
+  // .name === "AbortError" and .code === "ABORT_ERR". DOMException is
+  // surfaced by fetch, but we don't use fetch in this code path.
+  if (error.name === "AbortError") return true;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ABORT_ERR" || code === "ERR_ABORTED";
 }
 
 async function exists(path: string): Promise<boolean> {

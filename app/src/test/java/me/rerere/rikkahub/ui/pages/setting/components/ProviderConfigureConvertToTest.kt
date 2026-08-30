@@ -3,6 +3,12 @@ package me.rerere.rikkahub.ui.pages.setting.components
 import me.rerere.ai.provider.BalanceOption
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.rikkahub.testsupport.GOOGLE_KEY
+import me.rerere.rikkahub.testsupport.OPENAI_KEY
+import me.rerere.rikkahub.testsupport.PROXY_KEY
+import me.rerere.rikkahub.testsupport.claudeWith
+import me.rerere.rikkahub.testsupport.googleWith
+import me.rerere.rikkahub.testsupport.openAiWith
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -23,14 +29,13 @@ class ProviderConfigureConvertToTest {
             apiPath = "/custom/credits",
             resultPath = "data.balance"
         )
-        val original = ProviderSetting.OpenAI(
-            id = Uuid.random(),
-            enabled = false,
+        val original = openAiWith(
             name = "My Provider",
+            key = OPENAI_KEY,
+            baseUrl = "https://api.openai.com/v1",
+            enabled = false,
             models = listOf(model),
             balanceOption = balanceOption,
-            apiKey = "sk-test",
-            baseUrl = "https://api.openai.com/v1"
         )
 
         val converted = original.convertTo(ProviderSetting.Google::class)
@@ -48,10 +53,10 @@ class ProviderConfigureConvertToTest {
 
     @Test
     fun `convertTo should preserve third-party host and replace version suffix`() {
-        val original = ProviderSetting.OpenAI(
+        val original = openAiWith(
             name = "Proxy OpenAI",
-            apiKey = "proxy-key",
-            baseUrl = "https://gateway.example.com/api/v1"
+            key = PROXY_KEY,
+            baseUrl = "https://gateway.example.com/api/v1",
         )
 
         val converted = original.convertTo(ProviderSetting.Google::class) as ProviderSetting.Google
@@ -61,10 +66,10 @@ class ProviderConfigureConvertToTest {
 
     @Test
     fun `convertTo should preserve third-party host and append target path when needed`() {
-        val original = ProviderSetting.Google(
+        val original = googleWith(
             name = "Proxy Google",
-            apiKey = "proxy-google-key",
-            baseUrl = "https://proxy.example.com/vendor/gemini"
+            key = GOOGLE_KEY,
+            baseUrl = "https://proxy.example.com/vendor/gemini",
         )
 
         val converted = original.convertTo(ProviderSetting.OpenAI::class) as ProviderSetting.OpenAI
@@ -74,10 +79,10 @@ class ProviderConfigureConvertToTest {
 
     @Test
     fun `convertTo should preserve third-party host when switching to claude`() {
-        val original = ProviderSetting.OpenAI(
+        val original = openAiWith(
             name = "Proxy OpenAI",
-            apiKey = "proxy-key",
-            baseUrl = "https://gateway.example.com/proxy/v1beta"
+            key = PROXY_KEY,
+            baseUrl = "https://gateway.example.com/proxy/v1beta",
         )
 
         val converted = original.convertTo(ProviderSetting.Claude::class) as ProviderSetting.Claude
@@ -87,10 +92,10 @@ class ProviderConfigureConvertToTest {
 
     @Test
     fun `convertTo should return same instance for same type`() {
-        val original = ProviderSetting.OpenAI(
+        val original = openAiWith(
             name = "Same Type",
-            apiKey = "same-key",
-            baseUrl = "https://api.openai.com/v1"
+            key = OPENAI_KEY,
+            baseUrl = "https://api.openai.com/v1",
         )
 
         val converted = original.convertTo(ProviderSetting.OpenAI::class)
@@ -99,10 +104,10 @@ class ProviderConfigureConvertToTest {
 
     @Test
     fun `convertTo should keep original base url when source url is invalid`() {
-        val original = ProviderSetting.Claude(
+        val original = claudeWith(
             name = "Invalid URL Provider",
-            apiKey = "invalid-key",
-            baseUrl = "not-a-url"
+            key = PROXY_KEY,
+            baseUrl = "not-a-url",
         )
 
         val converted = original.convertTo(ProviderSetting.OpenAI::class) as ProviderSetting.OpenAI

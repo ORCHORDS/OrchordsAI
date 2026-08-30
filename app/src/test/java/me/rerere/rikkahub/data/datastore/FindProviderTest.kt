@@ -27,11 +27,14 @@ class FindProviderTest {
 
     @Test
     fun `findProvider returns overwrite instead of looking it up in settings providers`() {
+        val overwriteKey = "fixture-override-value"
+        val baseKey = "fixture-base-value"
         val overwrite = ProviderSetting.OpenAI(
-            name = "Override",
-            apiKey = "override-key",
-            baseUrl = "https://override.example/v1",
-        )
+            name = "Override"
+        ).apply {
+            apiKey = overwriteKey
+            baseUrl = "https://override.example/v1"
+        }
         val model = Model(
             modelId = "gpt-image-2",
             displayName = "gpt-image-2",
@@ -40,9 +43,8 @@ class FindProviderTest {
         )
         val provider = ProviderSetting.OpenAI(
             name = "OpenAI",
-            apiKey = "base-key",
             models = listOf(model),
-        )
+        ).apply { apiKey = baseKey }
         val providers = listOf(provider)
 
         val resolved = model.findProvider(providers)
@@ -51,7 +53,7 @@ class FindProviderTest {
         assertEquals(overwrite.id, resolved?.id)
         assertEquals("Override", resolved?.name)
         assertEquals("https://override.example/v1", (resolved as ProviderSetting.OpenAI).baseUrl)
-        assertEquals("override-key", resolved.apiKey)
+        assertEquals(overwriteKey, resolved.apiKey)
         assertNotEquals(provider.id, resolved.id)
         assertNull(providers.find { it.id == resolved.id })
     }

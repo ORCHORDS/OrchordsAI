@@ -11,3 +11,8 @@ local.properties
 .cursor
 .history
 .kotlin
+.mimosa/
+*.jks
+*.keystore
+**/google-services.json
+secrets/

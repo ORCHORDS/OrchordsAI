@@ -25,8 +25,9 @@ class ASRProviderSettingMiMoTest {
 
     @Test
     fun mimo_copy_provider_preserves_extra_fields() {
+        val placeholderKey = "fixture-mimo-value"
         val original = ASRProviderSetting.MiMo(
-            apiKey = "sk-test",
+            apiKey = placeholderKey,
             baseUrl = "https://example.com/v1",
             model = "mimo-v2.5-asr",
             language = "zh",
@@ -38,7 +39,7 @@ class ASRProviderSettingMiMoTest {
         assertTrue(copied is ASRProviderSetting.MiMo)
         val mimo = copied as ASRProviderSetting.MiMo
         assertEquals("renamed", mimo.name)
-        assertEquals("sk-test", mimo.apiKey)
+        assertEquals(placeholderKey, mimo.apiKey)
         assertEquals("https://example.com/v1", mimo.baseUrl)
         assertEquals("mimo-v2.5-asr", mimo.model)
         assertEquals("zh", mimo.language)

@@ -29,8 +29,9 @@ class TTSProviderSettingStepTest {
 
     @Test
     fun step_copyProvider_preserves_id_and_name() {
+        val placeholderKey = "fixture-step-key"
         val original = TTSProviderSetting.Step(
-            apiKey = "sk-test",
+            apiKey = placeholderKey,
             model = "stepaudio-2.5-tts",
             voice = "cixingnansheng",
         )
@@ -42,7 +43,7 @@ class TTSProviderSettingStepTest {
         assertEquals(original.id, copied.id)
         assertEquals("My Step", copied.name)
         // 其余字段必须保持不变
-        assertEquals("sk-test", copied.apiKey)
+        assertEquals(placeholderKey, copied.apiKey)
         assertEquals("stepaudio-2.5-tts", copied.model)
         assertEquals("cixingnansheng", copied.voice)
     }
