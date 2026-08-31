@@ -18,8 +18,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -38,7 +36,6 @@ class S3Sync(
 
     suspend fun testS3(config: S3Config) = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
-        // Test by listing objects with max 1 result
         client.listObjects(maxKeys = 1).getOrThrow()
         Log.i(TAG, "testS3: Connection successful")
     }
@@ -55,8 +52,6 @@ class S3Sync(
         ).getOrThrow()
 
         Log.i(TAG, "backupToS3: Uploaded ${file.name} (${file.length().fileSizeToString()})")
-
-        // Clean up temp file
         file.delete()
     }
 
@@ -104,16 +99,11 @@ class S3Sync(
         val backupFile = File(context.cacheDir, item.displayName)
 
         try {
-            // Download backup file directly to file to avoid OOM
             Log.i(TAG, "restoreFromS3: Downloading ${item.displayName}")
             client.downloadObjectToFile(item.key, backupFile).getOrThrow()
-
             Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
-
-            // Restore from backup file
             restoreFromBackupFile(backupFile, config)
         } finally {
-            // Clean up temp file
             if (backupFile.exists()) {
                 backupFile.delete()
                 Log.i(TAG, "restoreFromS3: Cleaned up temporary backup file")
@@ -128,14 +118,12 @@ class S3Sync(
     }
 
     suspend fun prepareBackupFile(config: S3Config): File = withContext(Dispatchers.IO) {
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-        val backupFile = File(context.cacheDir, "backup_$timestamp.zip")
+        val backupFile = File(context.cacheDir, newBackupFileName())
 
-        if (backupFile.exists()) {
-            backupFile.delete()
+        check(backupFile.createNewFile()) {
+            "Failed to allocate unique S3 backup staging file"
         }
 
-        // Create zip file and backup data
         ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             addVirtualFileToZip(
                 zipOut = zipOut,
@@ -143,7 +131,6 @@ class S3Sync(
                 content = json.encodeToString(settingsStore.settingsFlow.value)
             )
 
-            // Backup database files
             if (config.items.contains(S3Config.BackupItem.DATABASE)) {
                 val dbFile = context.getDatabasePath("orchordsai")
                 if (dbFile.exists()) {
@@ -161,7 +148,6 @@ class S3Sync(
                 }
             }
 
-            // Backup app files
             if (config.items.contains(S3Config.BackupItem.FILES)) {
                 val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
                 if (uploadFolder.exists() && uploadFolder.isDirectory) {
@@ -202,10 +188,7 @@ class S3Sync(
             }
         }
 
-        Log.i(
-            TAG,
-            "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})"
-        )
+        Log.i(TAG, "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})")
         backupFile
     }
 
@@ -237,40 +220,24 @@ class S3Sync(
                             if (config.items.contains(S3Config.BackupItem.DATABASE)) {
                                 val dbFile = when (zipEntry.name) {
                                     "orchordsai.db" -> context.getDatabasePath("orchordsai")
-                                    "orchordsai-wal" -> File(
-                                        context.getDatabasePath("orchordsai").parentFile,
-                                        "orchordsai-wal"
-                                    )
-
-                                    "orchordsai-shm" -> File(
-                                        context.getDatabasePath("orchordsai").parentFile,
-                                        "orchordsai-shm"
-                                    )
-
+                                    "orchordsai-wal" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-wal")
+                                    "orchordsai-shm" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-shm")
                                     else -> null
                                 }
 
                                 dbFile?.let { targetFile ->
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}"
-                                    )
+                                    Log.i(TAG, "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}")
                                     targetFile.parentFile?.mkdirs()
                                     FileOutputStream(targetFile).use { outputStream ->
                                         zipIn.copyTo(outputStream)
                                     }
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                    )
+                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                 }
                             }
                         }
 
                         else -> {
-                            if (config.items.contains(S3Config.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.UPLOAD}/")
-                            ) {
+                            if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.UPLOAD}/")) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.UPLOAD}/")
                                 if (fileName.isNotEmpty()) {
                                     val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
@@ -280,31 +247,21 @@ class S3Sync(
                                     }
 
                                     val targetFile = File(uploadFolder, fileName)
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}"
-                                    )
+                                    Log.i(TAG, "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}")
 
                                     try {
                                         FileOutputStream(targetFile).use { outputStream ->
                                             zipIn.copyTo(outputStream)
                                         }
-                                        Log.i(
-                                            TAG,
-                                            "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                        )
+                                        Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                     } catch (e: Exception) {
                                         Log.e(TAG, "restoreFromBackupFile: Failed to restore file ${zipEntry.name}", e)
                                         throw Exception("Failed to restore file ${zipEntry.name}: ${e.message}")
                                     }
                                 }
-                            } else if (config.items.contains(S3Config.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.SKILLS}/")
-                            ) {
+                            } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
                                 restoreSkillEntry(zipIn, zipEntry.name)
-                            } else if (config.items.contains(S3Config.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.FONTS}/")
-                            ) {
+                            } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
                                 if (fileName.isNotEmpty() && !fileName.contains('/')) {
                                     val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
@@ -312,10 +269,7 @@ class S3Sync(
                                     FileOutputStream(targetFile).use { outputStream ->
                                         zipIn.copyTo(outputStream)
                                     }
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                    )
+                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                 }
                             } else {
                                 Log.i(TAG, "restoreFromBackupFile: Skipping entry ${zipEntry.name}")
