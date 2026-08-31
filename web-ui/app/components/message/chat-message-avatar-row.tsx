@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { AIIcon } from "~/components/ui/ai-icon";
 import { UIAvatar } from "~/components/ui/ui-avatar";
+import { getAssistantDisplayName } from "~/lib/display";
 import { useSettingsStore } from "~/stores";
 import type { AssistantProfile, MessageDto, ProviderModel } from "~/types";
 
@@ -63,37 +64,63 @@ export function ChatMessageAvatarRow({
     );
   }
 
-  if (message.role !== "ASSISTANT" || !model) {
+  if (message.role !== "ASSISTANT") {
     return null;
   }
 
   const showModelIcon = displaySetting?.showModelIcon !== false;
   const showModelName = displaySetting?.showModelName === true;
-  if (!showModelIcon && !showModelName) {
+  const useAssistantAvatar = assistant?.useAssistantAvatar === true;
+  const assistantName = getAssistantDisplayName(assistant?.name);
+
+  if (useAssistantAvatar) {
+    if (!showModelIcon && !showModelName) {
+      return null;
+    }
+
+    return (
+      <div className="flex w-full justify-start px-1">
+        <div className="flex min-w-0 items-center gap-2">
+          {showModelIcon ? (
+            <UIAvatar
+              name={assistantName}
+              avatar={assistant?.avatar}
+              brand={assistant?.name?.trim() ? undefined : "default-assistant"}
+              className="size-9"
+            />
+          ) : null}
+          {showModelName ? (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-foreground/90">{assistantName}</div>
+              {createdAtLabel ? (
+                <div className="truncate text-xs text-muted-foreground/80">{createdAtLabel}</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (!model || (!showModelIcon && !showModelName)) {
     return null;
   }
 
-  const useAssistantAvatar = assistant?.useAssistantAvatar === true;
   const defaultAssistantName = t("common:quick_jump.role_assistant", { defaultValue: "Assistant" });
-  const assistantName = assistant?.name?.trim() || defaultAssistantName;
   const modelName = model.displayName.trim() || model.modelId.trim() || defaultAssistantName;
-  const title = useAssistantAvatar ? assistantName : modelName;
+  const title = modelName;
 
   return (
     <div className="flex w-full justify-start px-1">
       <div className="flex min-w-0 items-center gap-2">
         {showModelIcon ? (
-          useAssistantAvatar ? (
-            <UIAvatar name={assistantName} avatar={assistant?.avatar} className="size-9" />
-          ) : (
-            <AIIcon
-              name={model.modelId}
-              size={36}
-              loading={loading}
-              className="bg-secondary"
-              imageClassName="h-[72%] w-[72%]"
-            />
-          )
+          <AIIcon
+            name={model.modelId}
+            size={36}
+            loading={loading}
+            className="bg-secondary"
+            imageClassName="h-[72%] w-[72%]"
+          />
         ) : null}
         {showModelName ? (
           <div className="min-w-0">

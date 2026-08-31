@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import java.security.MessageDigest
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +98,7 @@ fun UIAvatar(
     value: Avatar,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    useDefaultAssistantBranding: Boolean = false,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -184,10 +187,19 @@ fun UIAvatar(
                     }
 
                     is Avatar.Dummy -> {
-                        ProceduralAvatar(
-                            name = name,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        if (useDefaultAssistantBranding) {
+                            Image(
+                                painter = painterResource(R.drawable.orchords_ai_avatar),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            ProceduralAvatar(
+                                name = name,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }

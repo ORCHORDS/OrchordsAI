@@ -75,6 +75,7 @@ fun ChatMessageAssistantAvatar(
                         modifier = Modifier.size(28.dp),
                         value = assistant.avatar,
                         loading = loading,
+                        useDefaultAssistantBranding = assistant.name.isBlank(),
                     )
                 }
                 Row(

@@ -161,6 +161,7 @@ private fun AssistantHeader(
         UIAvatar(
             value = assistant.avatar,
             name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+            useDefaultAssistantBranding = assistant.name.isBlank(),
             onUpdate = null,
             modifier = Modifier
                 .size(100.dp)
