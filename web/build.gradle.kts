@@ -6,6 +6,7 @@ plugins {
 
 val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
 val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
+val isCodeQl = System.getenv("CODEQL_ACTION_VERSION") != null
 
 val buildWebUi = tasks.register<Exec>("buildWebUi") {
     group = "build"
@@ -42,7 +43,12 @@ android {
 }
 
 tasks.named("preBuild") {
-    dependsOn(buildWebUi)
+    // GitHub's CodeQL default autobuild does not provision pnpm. Static
+    // analysis only needs the Android/Kotlin sources, so avoid invoking the
+    // frontend build on that ephemeral runner. Normal builds are unchanged.
+    if (!isCodeQl) {
+        dependsOn(buildWebUi)
+    }
 }
 
 dependencies {
