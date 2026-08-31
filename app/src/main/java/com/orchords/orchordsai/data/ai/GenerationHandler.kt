@@ -566,14 +566,14 @@ class GenerationHandler(
 
         if (totalChars <= MAX_TOOL_OUTPUT_CHARS || !hasShellAccess) return output
 
-        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars)")
+        Log.i(TAG, "maybeTruncateToolOutput: truncating output ($totalChars chars)")
 
         val fullText = textParts.joinToString("\n") { it.text }
         val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
 
-        val fileName = "${toolCallId}.txt"
-        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        File(outputDir, fileName).writeText(fullText)
+        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS)
+        val artifact = persistToolOutputArtifact(outputDir, fullText)
+        val fileName = artifact.name
 
         return listOf(
             UIMessagePart.Text(
