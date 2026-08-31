@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "cac": "^6.7.14",
+    "cac": "^7.0.0",
     "dotenv": "^17.2.3",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
