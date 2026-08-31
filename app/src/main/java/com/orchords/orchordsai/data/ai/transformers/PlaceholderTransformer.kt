@@ -11,7 +11,6 @@ import com.orchords.ai.ui.UIMessage
 import com.orchords.ai.ui.UIMessagePart
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.data.datastore.SettingsStore
-import com.orchords.orchordsai.data.datastore.getCurrentAssistant
 import com.orchords.orchordsai.data.model.Assistant
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -122,9 +121,12 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
         messages: List<UIMessage>,
     ): List<UIMessage> {
         val settingsStore = get<SettingsStore>()
-        return messages.map {
-            it.copy(
-                parts = it.parts.map { part ->
+        return messages.map { message ->
+            if (!shouldExpandRuntimePlaceholders(message)) {
+                return@map message
+            }
+            message.copy(
+                parts = message.parts.map { part ->
                     if (part is UIMessagePart.Text) {
                         part.copy(
                             text = replacePlaceholders(text = part.text, ctx = ctx, settingsStore = settingsStore)
@@ -144,14 +146,14 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
     ): String {
         var result = text
 
-        val ctx = PlaceholderCtx(
+        val placeholderCtx = PlaceholderCtx(
             context = ctx.context,
             settingsStore = settingsStore,
             model = ctx.model,
             assistant = ctx.assistant
         )
         defaultProvider.placeholders.forEach { (key, placeholderInfo) ->
-            val value = placeholderInfo.resolver(ctx)
+            val value = placeholderInfo.resolver(placeholderCtx)
             result = result
                 .replace(oldValue = "{{$key}}", newValue = value, ignoreCase = true)
                 .replace(oldValue = "{$key}", newValue = value, ignoreCase = true)
