@@ -13,6 +13,8 @@ import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.data.datastore.WebDavConfig
 import com.orchords.orchordsai.data.datastore.migration.SettingsJsonMigrator
 import com.orchords.orchordsai.data.sync.newBackupFileName
+import com.orchords.orchordsai.data.sync.requireSafeBackupDisplayName
+import com.orchords.orchordsai.data.sync.resolveBackupCacheFile
 import com.orchords.orchordsai.utils.fileSizeToString
 import java.io.File
 import java.io.FileInputStream
@@ -53,7 +55,10 @@ class WebDavSync(
         val resources = client.list().getOrThrow()
 
         resources
-            .filter { !it.isCollection && it.displayName.startsWith("backup_") && it.displayName.endsWith(".zip") }
+            .filter { resource ->
+                !resource.isCollection &&
+                    runCatching { requireSafeBackupDisplayName(resource.displayName) }.isSuccess
+            }
             .map { resource ->
                 WebDavBackupItem(
                     href = resource.href,
@@ -67,11 +72,12 @@ class WebDavSync(
 
     suspend fun restore(config: WebDavConfig, item: WebDavBackupItem) = withContext(Dispatchers.IO) {
         val client = getClient(config)
-        val backupFile = File(context.cacheDir, item.displayName)
+        val safeDisplayName = requireSafeBackupDisplayName(item.displayName)
+        val backupFile = resolveBackupCacheFile(context.cacheDir, safeDisplayName)
 
         try {
-            Log.i(TAG, "restore: Downloading ${item.displayName}")
-            client.downloadToFile(item.displayName, backupFile).getOrThrow()
+            Log.i(TAG, "restore: Downloading $safeDisplayName")
+            client.downloadToFile(safeDisplayName, backupFile).getOrThrow()
             Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
             restoreFromBackupFile(backupFile, config)
         } finally {
@@ -83,9 +89,10 @@ class WebDavSync(
     }
 
     suspend fun deleteBackupFile(config: WebDavConfig, item: WebDavBackupItem) = withContext(Dispatchers.IO) {
+        val safeDisplayName = requireSafeBackupDisplayName(item.displayName)
         val client = getClient(config)
-        client.delete(item.displayName).getOrThrow()
-        Log.i(TAG, "deleteBackupFile: Deleted ${item.displayName}")
+        client.delete(safeDisplayName).getOrThrow()
+        Log.i(TAG, "deleteBackupFile: Deleted $safeDisplayName")
     }
 
     suspend fun restoreFromLocalFile(file: File, config: WebDavConfig) = withContext(Dispatchers.IO) {
