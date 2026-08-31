@@ -47,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      apk_dir: ${{ steps.build_mode.outputs.apk_dir }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,7 +88,27 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
+      - name: Select build mode
+        id: build_mode
+        env:
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$KEY_BASE64" ] && [ -n "$SIGNING_CONFIG" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "gradle_task=assembleRelease" >> "$GITHUB_OUTPUT"
+            echo "apk_dir=app/build/outputs/apk/release" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "gradle_task=assembleDebug" >> "$GITHUB_OUTPUT"
+            echo "apk_dir=app/build/outputs/apk/debug" >> "$GITHUB_OUTPUT"
+            echo "Signing secrets are unavailable; producing an unsigned debug nightly artifact instead."
+          fi
+
       - name: Prepare signing files
+        if: steps.build_mode.outputs.signed == 'true'
         env:
           KEY_BASE64: ${{ secrets.KEY_BASE64 }}
           SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
@@ -94,19 +116,17 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          if [ -z "$KEY_BASE64" ] || [ -z "$SIGNING_CONFIG" ]; then
-            echo "Required signing secrets are not configured" >&2
-            exit 1
-          fi
           printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
           printf '%s\n' "$SIGNING_CONFIG" > local.properties
 
       - name: Gradle Build
+        env:
+          GRADLE_TASK: ${{ steps.build_mode.outputs.gradle_task }}
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon "$GRADLE_TASK"
 
       - name: Remove signing files
         if: always()
@@ -114,10 +134,12 @@ jobs:
         run: rm -f app/app.key local.properties
 
       - name: Generate APK checksums
+        env:
+          APK_DIR: ${{ steps.build_mode.outputs.apk_dir }}
         shell: bash
         run: |
           set -euo pipefail
-          cd app/build/outputs/apk/release
+          cd "$APK_DIR"
           sha256sum -- *.apk > SHA256SUMS
           sha256sum --check SHA256SUMS
 
@@ -126,8 +148,8 @@ jobs:
         with:
           name: nightly-apks
           path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/SHA256SUMS
+            ${{ steps.build_mode.outputs.apk_dir }}/*.apk
+            ${{ steps.build_mode.outputs.apk_dir }}/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
 
@@ -186,6 +208,7 @@ jobs:
 
             SHA-256 checksums are attached in `SHA256SUMS`.
             Build provenance is published as a GitHub artifact attestation.
+            When repository signing secrets are unavailable, the workflow publishes an unsigned debug APK instead of failing.
 
             > Development build — may be unstable, for testing only.
           files: |
