@@ -113,11 +113,21 @@ jobs:
         shell: bash
         run: rm -f app/app.key local.properties
 
+      - name: Generate APK checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app/build/outputs/apk/release
+          sha256sum -- *.apk > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
       - name: Stage APK artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: nightly-apks
-          path: app/build/outputs/apk/release/*.apk
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
 
@@ -134,6 +144,11 @@ jobs:
           name: nightly-apks
           path: dist
 
+      - name: Verify staged checksums
+        working-directory: dist
+        shell: bash
+        run: sha256sum --check SHA256SUMS
+
       - name: Publish nightly prerelease
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
@@ -143,5 +158,9 @@ jobs:
           body: |
             Automated daily build (commit `${{ github.sha }}`)
 
+            SHA-256 checksums are attached in `SHA256SUMS`.
+
             > Development build — may be unstable, for testing only.
-          files: dist/*.apk
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS
