@@ -1,12 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-  <cache-path
-    name="cache"
-    path="." />
-  <external-files-path
-    name="external_files"
-    path="." />
+  <!-- Managed chat attachments that are intentionally shareable. -->
   <files-path
     name="upload"
-    path="." />
+    path="upload/" />
+
+  <!-- Dedicated cache namespaces used only for explicit share/capture flows. -->
+  <cache-path
+    name="camera"
+    path="camera/" />
+  <cache-path
+    name="temp"
+    path="temp/" />
+  <cache-path
+    name="export"
+    path="export/" />
+  <cache-path
+    name="workspace_share"
+    path="workspace_share/" />
 </paths>
