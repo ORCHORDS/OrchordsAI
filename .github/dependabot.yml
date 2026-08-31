@@ -47,6 +47,29 @@ updates:
           - "minor"
           - "patch"
 
+  - package-ecosystem: "bun"
+    directory: "/trace-cli"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "Asia/Kuala_Lumpur"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      trace-cli-security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+      trace-cli-non-major:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "npm"
     directory: "/web-ui"
     schedule:
