@@ -1,16 +1,73 @@
-name: CodeQL setup guard
+name: CodeQL
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '31 3 * * 1'
   workflow_dispatch:
 
 permissions: {}
 
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  default-setup:
-    name: Default setup owns CodeQL
+  analyze:
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    permissions:
+      # Required to upload the SARIF results.
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Android Gradle build only works under manual build control:
+          # default setup's autobuild cannot build this project (verified:
+          # its Analyze (java-kotlin) job fails), which is what the "Code
+          # scanning configuration error" banner on the Security tab reports.
+          # Compiling the debug Kotlin sources is sufficient for the
+          # java-kotlin extractor and needs neither signing nor packaging.
+          # NOTE: default setup MUST stay disabled — advanced uploads are
+          # rejected while it is enabled (verified 2026-08-31).
+          - language: java-kotlin
+            build: true
+          - language: javascript-typescript
+            build: false
+          - language: actions
+            build: false
+          - language: c-cpp
+            build: false
     steps:
-      - name: Explain configuration
-        run: |
-          echo "CodeQL is managed by GitHub code scanning Default setup."
-          echo "This workflow intentionally does not upload SARIF because advanced uploads are rejected while Default setup is enabled."
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        if: matrix.build
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build && 'manual' || 'none' }}
+
+      - name: Compile Kotlin for extraction
+        if: matrix.build
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"
