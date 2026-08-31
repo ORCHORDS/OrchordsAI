@@ -5,22 +5,35 @@ on:
     - cron: '0 9,18 * * *'
   workflow_dispatch:
 
+permissions: {}
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Check for recent commits
         id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
         run: |
-          # Always build on manual trigger
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Scheduled runs: build only when there are commits in the past 24 hours
           if [ -n "$(git log --since='24 hours ago' --oneline)" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           else
@@ -33,27 +46,28 @@ jobs:
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           submodules: recursive
+          persist-credentials: false
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -61,32 +75,67 @@ jobs:
 
       - name: Install web-ui dependencies
         working-directory: web-ui
+        shell: bash
         run: pnpm install --frozen-lockfile
 
       - name: Gradle cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Prepare build files
+      - name: Prepare signing files
+        env:
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+        shell: bash
         run: |
-          # Decode the base64-encoded keystore
-          echo "${{ secrets.KEY_BASE64 }}" | base64 -d > app/app.key
-
-          # Write the signing configuration to local.properties
-          echo "${{ secrets.SIGNING_CONFIG }}" > local.properties
+          set -euo pipefail
+          umask 077
+          if [ -z "$KEY_BASE64" ] || [ -z "$SIGNING_CONFIG" ]; then
+            echo "Required signing secrets are not configured" >&2
+            exit 1
+          fi
+          printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
+          printf '%s\n' "$SIGNING_CONFIG" > local.properties
 
       - name: Gradle Build
+        shell: bash
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Remove signing files
+        if: always()
+        shell: bash
+        run: rm -f app/app.key local.properties
+
+      - name: Stage APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-apks
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: nightly-apks
+          path: dist
 
       - name: Publish nightly prerelease
-        uses: softprops/action-gh-release@v2
-        if: success()
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: nightly
           name: Nightly Build
@@ -94,5 +143,5 @@ jobs:
           body: |
             Automated daily build (commit `${{ github.sha }}`)
 
-            > ⚠️ Development build — may be unstable, for testing only.
-          files: app/build/outputs/apk/release/*.apk
+            > Development build — may be unstable, for testing only.
+          files: dist/*.apk
