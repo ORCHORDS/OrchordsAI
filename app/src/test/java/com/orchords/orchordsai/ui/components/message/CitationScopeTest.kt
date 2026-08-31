@@ -107,4 +107,24 @@ class CitationScopeTest {
         assertFalse(sanitized.contains("bbbbbb"))
         assertTrue(sanitized.contains("[ordinary](https://example.org/x)"))
     }
+
+    @Test
+    fun messageGroupingAppliesCitationScopeBeforeRendering() {
+        val parts = listOf(
+            searchTool("search-1", "aaaaaa" to "https://docs.example.com/a"),
+            UIMessagePart.Text(
+                "Claim [citation,evil.example](aaaaaa) unknown [citation,fake.example](bbbbbb) and [ordinary](https://example.org/x)",
+            ),
+        )
+
+        val content = parts.groupMessageParts()
+            .filterIsInstance<MessagePartBlock.ContentBlock>()
+            .single()
+            .part as UIMessagePart.Text
+
+        assertTrue(content.text.contains("[citation,docs.example.com](aaaaaa)"))
+        assertFalse(content.text.contains("evil.example"))
+        assertFalse(content.text.contains("bbbbbb"))
+        assertTrue(content.text.contains("[ordinary](https://example.org/x)"))
+    }
 }
