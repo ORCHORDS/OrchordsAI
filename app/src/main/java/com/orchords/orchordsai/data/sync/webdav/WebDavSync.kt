@@ -305,5 +305,5 @@ data class WebDavBackupItem(
     val href: String,
     val displayName: String,
     val size: Long,
-    val lastModified: Instant?,
+    val lastModified: Instant,
 )
