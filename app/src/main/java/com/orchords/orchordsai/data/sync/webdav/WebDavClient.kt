@@ -21,6 +21,7 @@ import io.ktor.util.cio.readChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.orchords.orchordsai.data.datastore.WebDavConfig
+import com.orchords.orchordsai.data.sync.requireSecureBackupEndpoint
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.InputStream
@@ -35,6 +36,10 @@ class WebDavClient(
     private val config: WebDavConfig,
     private val httpClient: HttpClient,
 ) {
+    init {
+        requireSecureBackupEndpoint(config.url, "WebDAV")
+    }
+
     private fun WebDavConfig.buildUrl(vararg segments: String): String {
         val base = url.trimEnd('/')
         val pathSegments = listOfNotNull(
