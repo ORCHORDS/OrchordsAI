@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'package.json'
+      - 'bun.lock'
+      - 'trace-cli/package.json'
+      - 'trace-cli/bun.lock'
       - 'web-ui/package.json'
       - 'web-ui/pnpm-lock.yaml'
       - '.github/workflows/dependency-audit.yml'
@@ -35,8 +39,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: web-ui/pnpm-lock.yaml
 
       - name: Audit web-ui dependency graph
         working-directory: web-ui
@@ -44,3 +46,40 @@ jobs:
         run: |
           set -o pipefail
           pnpm audit --json | tee pnpm-audit.json
+
+  bun-root-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Audit root Bun dependency graph
+        shell: bash
+        run: |
+          set -o pipefail
+          bun audit --json | tee bun-audit.json
+
+  bun-trace-cli-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Audit trace-cli Bun dependency graph
+        working-directory: trace-cli
+        shell: bash
+        run: |
+          set -o pipefail
+          bun audit --json | tee bun-audit.json
