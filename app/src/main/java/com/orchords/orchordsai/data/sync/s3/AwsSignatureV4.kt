@@ -1,5 +1,6 @@
 package com.orchords.orchordsai.data.sync.s3
 
+import com.orchords.orchordsai.data.sync.requireSecureBackupEndpoint
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.time.ZoneOffset
@@ -32,6 +33,8 @@ internal object AwsSignatureV4 {
         contentLength: Long? = null,
         contentType: String? = null,
     ): SignedRequest {
+        requireSecureBackupEndpoint(config.endpoint, "S3")
+
         val now = ZonedDateTime.now(ZoneOffset.UTC)
         val dateStamp = now.format(dateFormatter)
         val amzDate = now.format(timestampFormatter)
@@ -107,7 +110,7 @@ internal object AwsSignatureV4 {
         resultHeaders["authorization"] = authorizationHeader
 
         val url = buildString {
-            append(if (config.isHttps) "https://" else "http://")
+            append("https://")
             append(
                 when {
                     config.pathStyle -> host
