@@ -8,6 +8,8 @@
 [![Dependency audit](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
+> ⭐ If you like ORCHORDS AI or find it useful, please consider starring this repository. It helps more people discover the project.
+
 **Independent software studio founded in 2025.**
 
 ORCHORDS AI is a private-by-design, local-first Android AI workspace for user-selected models and services. It combines multi-provider chat, Model Context Protocol (MCP) tools, local persistence, voice, search, rich rendering, image, video, and workspace workflows without tying the product to a single model vendor.
