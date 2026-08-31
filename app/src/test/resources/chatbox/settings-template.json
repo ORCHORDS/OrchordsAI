@@ -1,0 +1,12 @@
+{
+  "providers": {
+    "deepseek": {
+      "apiKey": "fixture-chatbox-key",
+      "models": [{
+        "modelId": "deepseek-test",
+        "nickname": "DeepSeek Test",
+        "capabilities": ["vision", "tool_use", "reasoning"]
+      }]
+    }
+  }
+}

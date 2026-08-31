@@ -1,0 +1,35 @@
+# IDE and operating-system files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local configuration and credentials
+local.properties
+*.jks
+*.keystore
+**/google-services.json
+secrets/
+.env
+.env.*
+!.env.example
+
+# Build and tool output
+.gradle/
+.kotlin/
+**/build/
+.externalNativeBuild/
+.cxx/
+captures/
+node_modules/
+web-ui/.react-router/
+
+# Local automation and diagnostics
+.agents/
+.claude/
+.cursor/
+.history/
+.mimosa/
+*.log
+hs_err_pid*
+replay_pid*
