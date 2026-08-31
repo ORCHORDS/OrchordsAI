@@ -8,6 +8,12 @@ on:
       - 'app/src/main/java/com/orchords/orchordsai/ui/components/message/ChatMessageCot.kt'
       - 'app/src/test/java/com/orchords/orchordsai/ui/components/message/CitationScopeTest.kt'
       - '.github/workflows/citation-integrity.yml'
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/orchords/orchordsai/ui/components/message/CitationScope.kt'
+      - 'app/src/main/java/com/orchords/orchordsai/ui/components/message/ChatMessage.kt'
+      - 'app/src/test/java/com/orchords/orchordsai/ui/components/message/CitationScopeTest.kt'
+      - '.github/workflows/citation-integrity.yml'
   workflow_dispatch:
 
 permissions:

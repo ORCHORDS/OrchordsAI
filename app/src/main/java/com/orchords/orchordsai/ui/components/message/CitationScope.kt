@@ -32,6 +32,7 @@ internal fun buildCitationTargetsByPartIndex(
     }.toMap()
 
     val ambiguousIds = parsedSearchTargets.values
+        .mapNotNull { it }
         .flatten()
         .groupingBy { it.id }
         .eachCount()
@@ -47,9 +48,14 @@ internal fun buildCitationTargetsByPartIndex(
             is UIMessagePart.Tool -> {
                 if (part.toolName == "search_web" && part.isExecuted) {
                     if (activeScopeHasText) activeTargets.clear()
-                    parsedSearchTargets[index].orEmpty().forEach { result ->
-                        if (result.id !in ambiguousIds) {
-                            activeTargets[result.id] = result.target
+                    val searchTargets = parsedSearchTargets[index]
+                    if (searchTargets == null) {
+                        activeTargets.clear()
+                    } else {
+                        searchTargets.forEach { result ->
+                            if (result.id !in ambiguousIds) {
+                                activeTargets[result.id] = result.target
+                            }
                         }
                     }
                     activeScopeHasText = false
@@ -80,24 +86,75 @@ internal fun buildCitationTargetsByPartIndex(
 internal fun sanitizeCitationMarkdown(
     text: String,
     targets: Map<String, CitationTarget>,
-): String = citationMarkdownPattern.replace(text) { match ->
-    val id = match.groupValues[1].trim()
-    val target = targets[id] ?: return@replace ""
-    "[citation,${target.label}]($id)"
+): String {
+    val result = StringBuilder(text.length)
+    var index = 0
+    var fence: String? = null
+    var inlineTicks = 0
+
+    while (index < text.length) {
+        val atLineStart = index == 0 || text[index - 1] == '\n'
+        if (atLineStart && inlineTicks == 0) {
+            val delimiter = when {
+                text.startsWith("```", index) -> "```"
+                text.startsWith("~~~", index) -> "~~~"
+                else -> null
+            }
+            if (delimiter != null && (fence == null || fence == delimiter)) {
+                fence = if (fence == null) delimiter else null
+                result.append(delimiter)
+                index += delimiter.length
+                continue
+            }
+        }
+
+        if (fence == null && text[index] == '`') {
+            val end = text.indexOfFirstFrom(index) { it != '`' }
+            val runLength = end - index
+            inlineTicks = if (inlineTicks == 0) runLength else if (inlineTicks == runLength) 0 else inlineTicks
+            result.append(text, index, end)
+            index = end
+            continue
+        }
+
+        if (fence == null && inlineTicks == 0 && text[index] == '[') {
+            var slashIndex = index - 1
+            while (slashIndex >= 0 && text[slashIndex] == '\\') slashIndex--
+            val escaped = (index - slashIndex - 1) % 2 == 1
+            if (!escaped) {
+                val match = citationMarkdownPattern.find(text, index)
+                if (match != null && match.range.first == index) {
+                    val id = match.groupValues[1].trim()
+                    targets[id]?.let { result.append("[citation,${it.label}]($id)") }
+                    index = match.range.last + 1
+                    continue
+                }
+            }
+        }
+
+        result.append(text[index++])
+    }
+    return result.toString()
 }
 
-private fun parseSearchCitationTargets(tool: UIMessagePart.Tool): List<SearchCitationTarget> {
+private inline fun String.indexOfFirstFrom(start: Int, predicate: (Char) -> Boolean): Int {
+    var index = start
+    while (index < length && !predicate(this[index])) index++
+    return index
+}
+
+private fun parseSearchCitationTargets(tool: UIMessagePart.Tool): List<SearchCitationTarget>? {
     val outputText = tool.output
         .filterIsInstance<UIMessagePart.Text>()
         .joinToString("\n") { it.text }
 
-    if (outputText.isBlank()) return emptyList()
+    if (outputText.isBlank()) return null
 
     val items = runCatching {
         JsonInstant.parseToJsonElement(outputText)
             .jsonObject["items"]
             ?.jsonArray
-    }.getOrNull() ?: return emptyList()
+    }.getOrNull() ?: return null
 
     return items.mapNotNull { element ->
         val item = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null

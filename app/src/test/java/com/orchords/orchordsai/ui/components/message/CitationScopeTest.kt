@@ -92,6 +92,23 @@ class CitationScopeTest {
     }
 
     @Test
+    fun malformedSearchClearsEarlierPendingEvidence() {
+        val malformedSearch = UIMessagePart.Tool(
+            toolCallId = "search-2",
+            toolName = "search_web",
+            input = "{}",
+            output = listOf(UIMessagePart.Text("{}")),
+        )
+        val parts = listOf(
+            searchTool("search-1", "aaaaaa" to "https://one.example/a"),
+            malformedSearch,
+            UIMessagePart.Text("answer"),
+        )
+
+        assertTrue(buildCitationTargetsByPartIndex(parts).getValue(2).isEmpty())
+    }
+
+    @Test
     fun sanitizerUsesTrustedHostDropsUnknownCitationsAndPreservesOrdinaryLinks() {
         val parts = listOf(
             searchTool("search-1", "aaaaaa" to "https://docs.example.com/a"),
@@ -109,22 +126,23 @@ class CitationScopeTest {
     }
 
     @Test
-    fun messageGroupingAppliesCitationScopeBeforeRendering() {
-        val parts = listOf(
-            searchTool("search-1", "aaaaaa" to "https://docs.example.com/a"),
-            UIMessagePart.Text(
-                "Claim [citation,evil.example](aaaaaa) unknown [citation,fake.example](bbbbbb) and [ordinary](https://example.org/x)",
-            ),
+    fun sanitizerLeavesCodeEscapesAndAdjacentOrdinaryLinksUntouched() {
+        val targets = mapOf(
+            "aaaaaa" to CitationTarget("https://docs.example.com/a", "docs.example.com"),
         )
+        val input = """
+            `inline [citation,code.example](aaaaaa)` and \[citation,escaped.example](aaaaaa)
+            ~~~text
+            [citation,fenced.example](aaaaaa)
+            ~~~
+            Claim [citation,evil.example](aaaaaa)[ordinary](https://example.org/x).
+        """.trimIndent()
 
-        val content = parts.groupMessageParts()
-            .filterIsInstance<MessagePartBlock.ContentBlock>()
-            .single()
-            .part as UIMessagePart.Text
+        val sanitized = sanitizeCitationMarkdown(input, targets)
 
-        assertTrue(content.text.contains("[citation,docs.example.com](aaaaaa)"))
-        assertFalse(content.text.contains("evil.example"))
-        assertFalse(content.text.contains("bbbbbb"))
-        assertTrue(content.text.contains("[ordinary](https://example.org/x)"))
+        assertTrue(sanitized.contains("`inline [citation,code.example](aaaaaa)`"))
+        assertTrue(sanitized.contains("\\[citation,escaped.example](aaaaaa)"))
+        assertTrue(sanitized.contains("[citation,fenced.example](aaaaaa)"))
+        assertTrue(sanitized.contains("[citation,docs.example.com](aaaaaa)[ordinary](https://example.org/x)"))
     }
 }
