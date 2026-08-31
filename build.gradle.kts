@@ -1,4 +1,23 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+buildscript {
+    // Security pins for the build/plugin classpath: the Android Gradle plugin
+    // stack resolves vulnerable transitive versions of BouncyCastle (via
+    // apksig), jose4j, jdom2 and commons-lang3 here. Project configurations
+    // are covered by the subprojects-wide forces below, and build-logic pins
+    // its own classpath, but the root buildscript classpath needs this block.
+    configurations.classpath {
+        resolutionStrategy {
+            force(
+                "org.bouncycastle:bcpkix-jdk18on:1.84",
+                "org.bouncycastle:bcprov-jdk18on:1.84",
+                "org.bitbucket.b_c:jose4j:0.9.6",
+                "org.jdom:jdom2:2.0.6.1",
+                "org.apache.commons:commons-lang3:3.18.0",
+            )
+        }
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.compose) apply false
