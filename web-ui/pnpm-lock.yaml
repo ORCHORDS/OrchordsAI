@@ -58,8 +58,8 @@ importers:
         specifier: ^0.16.28
         version: 0.16.45
       ky:
-        specifier: ^1.14.3
-        version: 1.14.3
+        specifier: ^2.0.2
+        version: 2.0.2
       lucide-react:
         specifier: ^0.564.0
         version: 0.564.0(react@19.2.6)
@@ -2736,9 +2736,9 @@ packages:
   khroma@2.1.0:
     resolution: {integrity: sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==}
 
-  ky@1.14.3:
-    resolution: {integrity: sha512-9zy9lkjac+TR1c2tG+mkNSVlyOpInnWdSMiue4F+kq8TwJSgv6o8jhLRg8Ho6SnZ9wOYUq/yozts9qQCfk7bIw==}
-    engines: {node: '>=18'}
+  ky@2.0.2:
+    resolution: {integrity: sha512-/GmXpo9F9W+f8n4Ivr2iH+7h7wL7jLbLKWkMlpflcCRb6kGjBfTlASEXaZ9qUgNTn4VgS0P2pwxxzQ4EM6Ulgg==}
+    engines: {node: '>=22'}
 
   layout-base@1.0.2:
     resolution: {integrity: sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg==}
@@ -6329,7 +6329,7 @@ snapshots:
 
   khroma@2.1.0: {}
 
-  ky@1.14.3: {}
+  ky@2.0.2: {}
 
   layout-base@1.0.2: {}
 
