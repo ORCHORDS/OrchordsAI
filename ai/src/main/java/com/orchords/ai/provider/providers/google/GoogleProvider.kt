@@ -109,15 +109,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 .build()
         } else {
             val key = keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
-            if (providerSetting.vertexAI) {
-                request.newBuilder()
-                    .url(request.url.newBuilder().addQueryParameter("key", key).build())
-                    .build()
-            } else {
-                request.newBuilder()
-                    .addHeader("x-goog-api-key", key)
-                    .build()
-            }
+            request.withGoogleApiKey(key)
         }
     }
 
