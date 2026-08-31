@@ -9,6 +9,10 @@ plugins {
 configurations.all {
     resolutionStrategy {
         force(
+            // CVE-2026-53914: the version catalog remains on the latest stable
+            // line while this included build resolves the patched Kotlin RC.
+            "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20-RC2",
+            "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.20-RC2",
             "org.bouncycastle:bcpkix-jdk18on:1.84",
             "org.bouncycastle:bcprov-jdk18on:1.84",
             "org.bitbucket.b_c:jose4j:0.9.6",

@@ -15,6 +15,12 @@ pluginManagement {
     }
     resolutionStrategy {
         eachPlugin {
+            // CVE-2026-53914 is fixed for Dependabot purposes in Kotlin
+            // 2.4.20-Beta1 and later. Keep every Kotlin plugin on the same
+            // patched toolchain until the stable release replaces this override.
+            if (requested.id.id.startsWith("org.jetbrains.kotlin.")) {
+                useVersion("2.4.20-RC2")
+            }
             if (requested.id.id == "io.objectbox") {
                 useModule("io.objectbox:objectbox-gradle-plugin:${requested.version}")
             }
