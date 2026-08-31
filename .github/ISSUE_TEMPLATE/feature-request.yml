@@ -1,0 +1,35 @@
+name: Feature Request
+description: Request a new feature
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Note**
+        > Feature requests are evaluated by necessity and impact on the codebase — not all requests will be accepted.
+        > Please open a discussion issue before investing effort in a proposal.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: Describe the new feature you are requesting.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Usage Scenario
+      description: Describe the scenario in which this feature would be used and how it would help you.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Are there any alternative solutions or workarounds you've considered?
+    validations:
+      required: false
