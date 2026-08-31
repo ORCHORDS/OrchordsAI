@@ -1,6 +1,12 @@
-# Security Policy
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ORCHORDS/docs/main/assets/1080x360.jpg" width="1080" alt="ORCHORDS — BUILD DIFFERENT.">
+</p>
 
-OrchordsAI takes security reports seriously. Please do not open a public issue for a suspected vulnerability.
+# ORCHORDS AI Security Policy
+
+**Independent software studio founded in 2025.**
+
+ORCHORDS AI takes security reports seriously. Please do not open a public issue for a suspected vulnerability.
 
 ## Reporting a vulnerability
 
@@ -30,3 +36,7 @@ No production secrets belong in source control, issues, pull requests, Actions l
 ## Supported code
 
 Security fixes target the current `main` branch and supported published releases. Historical snapshots and unsupported development builds may not receive backports.
+
+## Brand
+
+**ORCHORDS — BUILD DIFFERENT.**

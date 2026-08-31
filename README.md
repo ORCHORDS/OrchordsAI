@@ -1,17 +1,37 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ORCHORDS/docs/main/assets/1080x360.jpg" width="1080" alt="ORCHORDS — BUILD DIFFERENT.">
+</p>
+
 # ORCHORDS AI
 
-ORCHORDS AI is a local-first Android AI assistant for user-selected models and services.
+[![Daily build](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/daily-build.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/daily-build.yml)
+[![Dependency audit](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
+**Independent software studio founded in 2025.**
+
+ORCHORDS AI is a private-by-design, local-first Android AI workspace for user-selected models and services. It combines multi-provider chat, Model Context Protocol (MCP) tools, local persistence, voice, search, rich rendering, image, video, and workspace workflows without tying the product to a single model vendor.
+
+## Start here
+
+| If you need… | Start with |
+| --- | --- |
+| Build and verification requirements | [Building ORCHORDS AI](docs/BUILDING.md) |
+| Component boundaries | [ORCHORDS AI Architecture](docs/ARCHITECTURE.md) |
+| MCP integration and approvals | [Model Context Protocol](docs/MCP.md) |
+| GitHub MCP guidance | [GitHub MCP](docs/GITHUB_MCP.md) |
+| Cloudflare MCP guidance | [Cloudflare MCP](docs/CLOUDFLARE_MCP.md) |
+| Security design and reporting | [Security Design](docs/SECURITY.md) · [Security Policy](SECURITY.md) |
+| Release process | [Releasing ORCHORDS AI](docs/RELEASING.md) |
+| Repository branding rules | [Branding and Documentation Style](docs/BRANDING.md) |
 
 ## Capabilities
 
-- Multi-provider chat and configurable endpoints
-- MCP tools with approval controls
+- Multi-provider chat with configurable endpoints and request controls
+- MCP tools with explicit approval boundaries for sensitive actions
 - On-device conversations, settings, and credentials
 - Voice, search, rich rendering, image, and video workflows
-
-## Build
-
-See [Building](docs/BUILDING.md).
+- Optional local web interface and workspace tooling
 
 ## Verify nightly APKs
 
@@ -26,6 +46,14 @@ gh attestation verify ./ORCHORDS-AI.apk \
 ```
 
 Replace `ORCHORDS-AI.apk` with the downloaded APK filename.
+
+## Documentation boundary
+
+Product-specific engineering guidance lives in this repository. Company-wide public engineering, security, governance, and operational documentation is maintained in [`ORCHORDS/docs`](https://github.com/ORCHORDS/docs).
+
+## Brand
+
+**ORCHORDS — BUILD DIFFERENT.**
 
 ## License
 

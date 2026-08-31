@@ -1,5 +1,5 @@
-name: Bug Report
-description: Report an app bug or crash
+name: ORCHORDS AI Bug Report
+description: Report an ORCHORDS AI app bug or crash
 title: "bug: "
 labels: ["bug"]
 body:
@@ -73,7 +73,7 @@ body:
   - type: input
     id: app-version
     attributes:
-      label: App Version
+      label: ORCHORDS AI Version
       description: e.g. v1.2.3
       placeholder: v1.2.3
     validations:

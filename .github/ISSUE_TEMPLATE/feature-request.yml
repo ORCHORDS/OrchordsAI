@@ -1,11 +1,13 @@
-name: Feature Request
-description: Request a new feature
+name: ORCHORDS AI Feature Request
+description: Propose an ORCHORDS AI feature
 title: "feat: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
+        Describe a concrete ORCHORDS AI user need and the smallest useful change that addresses it.
+
         > **Note**
         > Feature requests are evaluated by necessity and impact on the codebase — not all requests will be accepted.
         > Please open a discussion issue before investing effort in a proposal.
@@ -14,7 +16,7 @@ body:
     id: description
     attributes:
       label: Feature Description
-      description: Describe the new feature you are requesting.
+      description: Describe the new ORCHORDS AI feature you are requesting.
     validations:
       required: true
 
