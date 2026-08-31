@@ -392,27 +392,13 @@ private fun String.parseRootfsEntries(): List<WorkspaceFileEntry> {
     }
 }
 
-private fun kotlinx.serialization.json.JsonObject.absolutePath(name: String): String {
-    val path = string(name)?.replace('\\', '/')?.trim() ?: error("$name is required")
-    require(path.isNotBlank()) { "$name is required" }
-    require(path.startsWith("/")) { "$name must be an absolute path inside Rootfs" }
-    require(!path.contains('\u0000')) { "$name contains invalid character" }
-    return path
-}
-
-private val WRITABLE_ROOT_PREFIXES = listOf("/workspace", "/tmp")
+private fun kotlinx.serialization.json.JsonObject.absolutePath(name: String): String =
+    normalizeRootfsPath(string(name) ?: error("$name is required"))
 
 private fun kotlinx.serialization.json.JsonElement.pathOutsideWritableRoots(name: String): Boolean =
     runCatching {
-        jsonObject.absolutePath(name).isOutsideWritableRoots()
+        isOutsideWritableRootfsRoots(jsonObject.absolutePath(name))
     }.getOrDefault(true)
-
-private fun String.isOutsideWritableRoots(): Boolean {
-    val normalized = trimEnd('/').ifBlank { "/" }
-    return WRITABLE_ROOT_PREFIXES.none { prefix ->
-        normalized == prefix || normalized.startsWith("$prefix/")
-    }
-}
 
 private fun String.rootfsName(): String =
     trimEnd('/').substringAfterLast('/').ifBlank { "/" }
