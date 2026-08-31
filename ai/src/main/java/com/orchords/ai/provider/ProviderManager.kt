@@ -10,11 +10,14 @@ import okhttp3.OkHttpClient
  */
 class ProviderManager(client: OkHttpClient, context: Context) {
     private val providers = mutableMapOf<String, Provider<*>>()
+    private val providerClient = client.newBuilder()
+        .addInterceptor(ProviderIngressInterceptor())
+        .build()
 
     init {
-        registerProvider("openai", OpenAIProvider(client, context))
-        registerProvider("google", GoogleProvider(client, context))
-        registerProvider("claude", ClaudeProvider(client, context))
+        registerProvider("openai", OpenAIProvider(providerClient, context))
+        registerProvider("google", GoogleProvider(providerClient, context))
+        registerProvider("claude", ClaudeProvider(providerClient, context))
     }
 
     /**
