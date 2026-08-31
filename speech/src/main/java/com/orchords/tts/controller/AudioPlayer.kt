@@ -31,28 +31,40 @@ import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class AudioPlayer(context: Context) {
+internal interface TtsAudioPlayer {
+    val playbackState: StateFlow<PlaybackState>
+    fun pause()
+    fun resume()
+    fun stop()
+    fun clear()
+    fun release()
+    fun seekBy(ms: Long)
+    fun setSpeed(speed: Float)
+    suspend fun play(response: TTSResponse)
+}
+
+class AudioPlayer(context: Context) : TtsAudioPlayer {
     private val player = ExoPlayer.Builder(context).build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _playbackState = MutableStateFlow(PlaybackState())
-    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+    override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     private var positionJob: Job? = null
 
-    fun pause() = player.pause()
-    fun resume() = player.play()
-    fun stop() = player.stop()
-    fun clear() = player.clearMediaItems()
-    fun release() = player.release()
-    fun seekBy(ms: Long) = player.seekTo(player.currentPosition + ms)
-    fun setSpeed(speed: Float) {
+    override fun pause() = player.pause()
+    override fun resume() = player.play()
+    override fun stop() = player.stop()
+    override fun clear() = player.clearMediaItems()
+    override fun release() = player.release()
+    override fun seekBy(ms: Long) = player.seekTo(player.currentPosition + ms)
+    override fun setSpeed(speed: Float) {
         player.playbackParameters = PlaybackParameters(speed)
         _playbackState.update { it.copy(speed = speed) }
     }
 
     @OptIn(UnstableApi::class)
-    suspend fun play(response: TTSResponse) = suspendCancellableCoroutine<Unit> { cont ->
+    override suspend fun play(response: TTSResponse) = suspendCancellableCoroutine<Unit> { cont ->
         val bytes = if (response.format == AudioFormat.PCM) {
             pcmToWav(response.audioData, response.sampleRate ?: 24000)
         } else response.audioData

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -32,22 +33,27 @@ private const val SYNTHESIS_RETRY_BASE_DELAY_MS = 500L
 
 /**
  */
-class TtsController(
-    context: Context,
-    private val ttsManager: TTSManager
+class TtsController internal constructor(
+    private val audio: TtsAudioPlayer,
+    private val synthesize: suspend (TTSProviderSetting, TtsChunk) -> TTSResponse,
+    private val scope: CoroutineScope
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    constructor(context: Context, ttsManager: TTSManager) : this(
+        audio = AudioPlayer(context),
+        synthesize = TtsSynthesizer(ttsManager)::synthesize,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    )
 
     private val chunker = TextChunker(maxChunkLength = 160)
-    private val synthesizer = TtsSynthesizer(ttsManager)
-    private val audio = AudioPlayer(context)
 
     private var currentProvider: TTSProviderSetting? = null
     private var workerJob: Job? = null
+    private var sessionGeneration = 0L
     private var isPaused = false
 
-    private val queue: java.util.concurrent.ConcurrentLinkedQueue<TtsChunk> = java.util.concurrent.ConcurrentLinkedQueue()
+    private val queue = java.util.concurrent.ConcurrentLinkedDeque<TtsChunk>()
     private val allChunks: MutableList<TtsChunk> = mutableListOf()
+    private var failedChunk: TtsChunk? = null
     private val cache = java.util.concurrent.ConcurrentHashMap<UUID, kotlinx.coroutines.Deferred<TTSResponse>>()
 
     private val chunkDelayMs = 120L
@@ -74,21 +80,27 @@ class TtsController(
     init {
         scope.launch {
             audio.playbackState.collectLatest { audioState ->
-                _playbackState.update {
-                    audioState.copy(
-                        currentChunkIndex = _currentChunk.value,
-                        totalChunks = _totalChunks.value,
-                        status = if (!_isAvailable.value) PlaybackStatus.Idle else audioState.status
-                    )
+                _playbackState.update { current ->
+                    if (failedChunk != null) {
+                        current
+                    } else {
+                        audioState.copy(
+                            currentChunkIndex = _currentChunk.value,
+                            totalChunks = _totalChunks.value,
+                            skippedChunks = current.skippedChunks,
+                            status = if (!_isAvailable.value) PlaybackStatus.Idle else audioState.status
+                        )
+                    }
                 }
             }
         }
     }
 
     fun setProvider(provider: TTSProviderSetting?) {
+        if (provider == currentProvider) return
+        internalReset()
         currentProvider = provider
         _isAvailable.update { provider != null }
-        if (provider == null) stop()
     }
 
     /**
@@ -131,7 +143,9 @@ class TtsController(
 
     private fun internalReset() {
         // Reset current session while keeping provider availability
+        sessionGeneration++
         workerJob?.cancel()
+        workerJob = null
         audio.stop()
         audio.clear()
         isPaused = false
@@ -139,6 +153,7 @@ class TtsController(
         allChunks.clear()
         cache.values.forEach { it.cancel(CancellationException("Reset")) }
         cache.clear()
+        failedChunk = null
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
         _totalChunks.update { 0 }
@@ -166,15 +181,51 @@ class TtsController(
         audio.setSpeed(speed)
     }
 
+    fun retryFailedChunk() {
+        val chunk = failedChunk ?: return
+        failedChunk = null
+        _error.update { null }
+        _playbackState.update {
+            it.copy(
+                status = PlaybackStatus.Buffering,
+                errorMessage = null,
+                failedChunkText = null,
+                failedChunkIndex = null,
+                failedChunkRetryable = false
+            )
+        }
+        queue.addFirst(chunk)
+        if (workerJob?.isActive != true) startWorker()
+    }
+
     fun skipNext() {
-        if (queue.isNotEmpty()) {
+        if (failedChunk != null) {
+            failedChunk = null
+            _error.update { null }
+            _playbackState.update {
+                it.copy(
+                    status = PlaybackStatus.Buffering,
+                    errorMessage = null,
+                    failedChunkText = null,
+                    failedChunkIndex = null,
+                    failedChunkRetryable = false,
+                    skippedChunks = it.skippedChunks + 1
+                )
+            }
+            if (queue.isEmpty()) {
+                _playbackState.update { it.copy(status = PlaybackStatus.Ended) }
+            } else if (workerJob?.isActive != true) {
+                startWorker()
+            }
+        } else if (queue.isNotEmpty()) {
             queue.poll()
-            _totalChunks.update { queue.size }
         }
     }
 
     fun stop() {
+        sessionGeneration++
         workerJob?.cancel()
+        workerJob = null
         audio.stop()
         audio.clear()
         isPaused = false
@@ -182,6 +233,7 @@ class TtsController(
         allChunks.clear()
         cache.values.forEach { it.cancel(CancellationException("Stopped")) }
         cache.clear()
+        failedChunk = null
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
         _totalChunks.update { 0 }
@@ -201,7 +253,9 @@ class TtsController(
             return
         }
 
-        workerJob = scope.launch {
+        val generation = sessionGeneration
+        lateinit var thisWorker: Job
+        thisWorker = scope.launch(start = CoroutineStart.LAZY) {
             _isSpeaking.update { true }
             var processedCount = _currentChunk.value
             try {
@@ -213,11 +267,9 @@ class TtsController(
 
                     val chunk = queue.poll() ?: break
 
-                    _currentChunk.update { processedCount + 1 }
-                    _totalChunks.update { queue.size + 1 }
                     _playbackState.update {
                         it.copy(
-                            currentChunkIndex = _currentChunk.value,
+                            currentChunkIndex = processedCount,
                             totalChunks = _totalChunks.value
                         )
                     }
@@ -228,31 +280,62 @@ class TtsController(
                         awaitOrCreate(chunk, provider)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
-                        Log.e(TAG, "Synthesis error", e)
-                        _error.update { e.message ?: "TTS synthesis error" }
-                        processedCount++
-                        continue
+                        val message = "Speech synthesis failed at chunk ${chunk.index + 1}"
+                        logSpeechFailure(message, e)
+                        failedChunk = chunk
+                        _error.update { message }
+                        _playbackState.update {
+                            it.copy(
+                                status = PlaybackStatus.Error,
+                                currentChunkIndex = processedCount,
+                                errorMessage = message,
+                                failedChunkText = chunk.text,
+                                failedChunkIndex = chunk.index,
+                                failedChunkRetryable = e.isRetryableSynthesisError()
+                            )
+                        }
+                        break
                     }
 
                     try {
                         audio.play(response)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
-                        Log.e(TAG, "Playback error", e)
-                        _error.update { e.message ?: "Audio playback error" }
+                        val message = "Speech playback failed at chunk ${chunk.index + 1}"
+                        logSpeechFailure(message, e)
+                        failedChunk = chunk
+                        _error.update { message }
+                        _playbackState.update {
+                            it.copy(
+                                status = PlaybackStatus.Error,
+                                currentChunkIndex = processedCount,
+                                errorMessage = message,
+                                failedChunkText = chunk.text,
+                                failedChunkIndex = chunk.index,
+                                failedChunkRetryable = false
+                            )
+                        }
+                        break
                     }
 
                     if (queue.isNotEmpty()) delay(chunkDelayMs)
 
                     processedCount++
+                    _currentChunk.update { processedCount }
+                    _playbackState.update { it.copy(currentChunkIndex = processedCount) }
                 }
             } finally {
-                _isSpeaking.update { false }
-                if (queue.isEmpty()) {
-                    _playbackState.update { it.copy(status = PlaybackStatus.Ended) }
+                if (generation == sessionGeneration && workerJob === thisWorker) {
+                    _isSpeaking.update { false }
+                    workerJob = null
+                    if (queue.isEmpty() && failedChunk == null) {
+                        _playbackState.update { it.copy(status = PlaybackStatus.Ended) }
+                    }
                 }
             }
         }
+        workerJob = thisWorker
+        thisWorker.start()
     }
 
     private fun prefetchNextChunks(currentIndex: Int) {
@@ -295,7 +378,7 @@ class TtsController(
         var attempt = 1
         while (true) {
             try {
-                return synthesizer.synthesize(provider, chunk)
+                return synthesize(provider, chunk)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -314,6 +397,14 @@ class TtsController(
         }
     }
     // endregion
+}
+
+private fun logSpeechFailure(message: String, error: Exception) {
+    try {
+        Log.e(TAG, "$message (${error.javaClass.simpleName})")
+    } catch (_: RuntimeException) {
+        // android.util.Log is unavailable in local JVM tests.
+    }
 }
 
 private fun Exception.isRetryableSynthesisError(): Boolean {
