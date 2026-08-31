@@ -95,18 +95,8 @@
     </activity>
     <activity
       android:name="com.orchords.orchordsai.ui.activity.ShortcutHandlerActivity"
-      android:exported="true"
-      android:theme="@android:style/Theme.Translucent.NoTitleBar">
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-
-        <category android:name="android.intent.category.DEFAULT" />
-
-        <data
-          android:host="shortcut"
-          android:scheme="orchordsai" />
-      </intent-filter>
-    </activity>
+      android:exported="false"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     <activity
       android:name="com.yalantis.ucrop.UCropActivity"
       android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
