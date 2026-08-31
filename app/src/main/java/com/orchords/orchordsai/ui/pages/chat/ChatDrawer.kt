@@ -2,6 +2,7 @@ package com.orchords.orchordsai.ui.pages.chat
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -906,12 +908,22 @@ private fun AssistantItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            UIAvatar(
-                name = assistant.name,
-                value = assistant.avatar,
-                onUpdate = {},
-                modifier = Modifier.size(40.dp),
-            )
+            if (assistant.name.isBlank()) {
+                Image(
+                    painter = painterResource(R.drawable.orchords_ai_avatar),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                )
+            } else {
+                UIAvatar(
+                    name = assistant.name,
+                    value = assistant.avatar,
+                    onUpdate = {},
+                    modifier = Modifier.size(40.dp),
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f)
             ) {
