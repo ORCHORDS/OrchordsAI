@@ -7,30 +7,23 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalDensity
-
 @Composable
 fun ImeLazyListAutoScroller(
     lazyListState: LazyListState,
+    conversationId: String,
+    onImeHeightChange: (Int) -> Int,
 ) {
     val ime = WindowInsets.ime
     val localDensity = LocalDensity.current
-    var imeHeigh by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        snapshotFlow {
-            ime.getBottom(localDensity)
-        }.collect { keyboardHeight ->
-            if (keyboardHeight > 0) {
-                if (imeHeigh < keyboardHeight) {
-                    lazyListState.scrollBy((keyboardHeight - imeHeigh).toFloat())
-                } else {
-                    lazyListState.scrollBy((keyboardHeight - imeHeigh).toFloat())
-                }
-                imeHeigh = keyboardHeight
+    val onImeHeightChangeState by rememberUpdatedState(onImeHeightChange)
+    LaunchedEffect(ime, localDensity, conversationId) {
+        snapshotFlow { ime.getBottom(localDensity) }.collect { keyboardHeight ->
+            val scrollDelta = onImeHeightChangeState(keyboardHeight)
+            if (scrollDelta != 0) {
+                lazyListState.scrollBy(scrollDelta.toFloat())
             }
         }
     }

@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -82,6 +81,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
@@ -102,7 +105,6 @@ import com.orchords.orchordsai.ui.components.ui.Tooltip
 import com.orchords.orchordsai.ui.hooks.ImeLazyListAutoScroller
 import com.orchords.orchordsai.ui.theme.ChatFontProvider
 import com.orchords.orchordsai.utils.plus
-import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
@@ -135,6 +137,8 @@ fun ChatList(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    followPolicy: ViewportFollowPolicy,
+    onFollowPolicyChange: (ViewportFollowPolicy) -> Unit,
 ) {
     AnimatedContent(
         targetState = previewMode,
@@ -177,6 +181,8 @@ fun ChatList(
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
+                followPolicy = followPolicy,
+                onFollowPolicyChange = onFollowPolicyChange,
             )
         }
     }
@@ -207,11 +213,14 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    followPolicy: ViewportFollowPolicy,
+    onFollowPolicyChange: (ViewportFollowPolicy) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
+    val followPolicyState by rememberUpdatedState(followPolicy)
+    val onFollowPolicyChangeState by rememberUpdatedState(onFollowPolicyChange)
     var isRecentScroll by remember { mutableStateOf(false) }
-    val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalActivity.current as? com.orchords.orchordsai.OrchordsAiActivity
 
@@ -223,6 +232,7 @@ private fun ChatListNormal(
                 }
                 val scrollAmount = (state.layoutInfo.viewportSize.height - bottomPaddingPx) *
                     settings.displaySetting.volumeKeyScrollRatio
+                onFollowPolicyChangeState(followPolicyState.onReaderNavigation())
                 scope.launch { state.scrollBy(if (isVolumeUp) -scrollAmount else scrollAmount) }
                 true
             } else false
@@ -233,20 +243,30 @@ private fun ChatListNormal(
         }
     }
 
-    fun List<LazyListItemInfo>.isAtBottom(): Boolean {
-        val lastItem = lastOrNull() ?: return false
-        val inputBarHeight = with(density) { innerPadding.calculateBottomPadding().toPx() }
-        val lastPos = lastItem.offset + lastItem.size
-        val inputPos = (state.layoutInfo.viewportEndOffset - inputBarHeight.roundToInt())
-        // println("lastPos = $lastPos, inputPos = $inputPos  | ${lastPos <= inputPos - 8}")
-        return lastPos <= inputPos - 8
-    }
-
     val selectedItems = remember { mutableStateListOf<Uuid>() }
     var selecting by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
 
-    ImeLazyListAutoScroller(lazyListState = state)
+    ImeLazyListAutoScroller(
+        lazyListState = state,
+        conversationId = followPolicy.conversationId,
+        onImeHeightChange = { keyboardHeight ->
+            val update = followPolicyState.onImeHeightChanged(keyboardHeight)
+            onFollowPolicyChangeState(update.policy)
+            update.imeScrollDelta
+        },
+    )
+
+    val readerNavigationConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                    onFollowPolicyChangeState(followPolicyState.onReaderNavigation())
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     val sizeInfo = rememberConversationSizeInfo(conversation)
     var showSizeWarningDialog by rememberSaveable(conversation.id) { mutableStateOf(true) }
@@ -273,13 +293,9 @@ private fun ChatListNormal(
     ) {
         if (settings.displaySetting.enableAutoScroll) {
             LaunchedEffect(state) {
-                snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
-                    // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-                    if (!state.isScrollInProgress && loadingState) {
-                        if (visibleItemsInfo.isAtBottom()) {
-                            state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
-                            // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
-                        }
+                snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect {
+                    if (!state.isScrollInProgress && loadingState && followPolicyState.ownsFollow) {
+                        state.requestScrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }
                 }
             }
@@ -305,6 +321,7 @@ private fun ChatListNormal(
                 modifier = Modifier
                     .fillMaxSize()
                     .hazeSource(state = hazeState)
+                    .nestedScroll(readerNavigationConnection)
                     .padding(top = innerPadding.calculateTopPadding()),
             ) {
             itemsIndexed(
@@ -503,7 +520,10 @@ private fun ChatListNormal(
                 show = isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper && !captureProgress,
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
-                state = state
+                state = state,
+                onReturnToLatest = {
+                    onFollowPolicyChange(followPolicy.onReturnToLatest())
+                },
             )
 
             // Suggestion
@@ -731,7 +751,8 @@ private fun BoxScope.MessageJumper(
     show: Boolean,
     onLeft: Boolean,
     scope: CoroutineScope,
-    state: LazyListState
+    state: LazyListState,
+    onReturnToLatest: () -> Unit,
 ) {
     AnimatedVisibility(
         visible = show,
@@ -809,6 +830,7 @@ private fun BoxScope.MessageJumper(
             }
             Surface(
                 onClick = {
+                    onReturnToLatest()
                     scope.launch {
                         state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }
