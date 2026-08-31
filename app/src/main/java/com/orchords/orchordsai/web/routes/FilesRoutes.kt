@@ -24,7 +24,6 @@ import com.orchords.orchordsai.web.NotFoundException
 import com.orchords.orchordsai.web.dto.UploadFilesResponseDto
 import com.orchords.orchordsai.web.dto.UploadedFileDto
 import java.io.ByteArrayOutputStream
-import java.io.File
 
 private const val MAX_UPLOAD_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB
 
@@ -114,61 +113,27 @@ fun Route.filesRoutes(
             call.respondFile(file)
         }
 
-        // GET /api/files/path/{...} - Get file by relative path
+        // GET /api/files/path/{...} - Legacy managed-file lookup by relative path.
         get("/path/{path...}") {
             val relativePath = call.pathParameters.getAll("path")?.joinToString("/")
                 ?: throw BadRequestException("Missing file path")
 
-            // Validate path to prevent directory traversal attacks
             if (relativePath.contains("..") || relativePath.startsWith("/")) {
                 throw BadRequestException("Invalid file path")
             }
 
-            val filesDir = context.filesDir
-            val file = File(filesDir, relativePath)
+            // A filesystem path is never sufficient Web read authority. The legacy route remains
+            // only for compatibility and must resolve through the managed-file registry first.
+            val entity = filesManager.getByRelativePath(relativePath)
+                ?: throw NotFoundException("File not found")
+            val file = resolveManagedWebFile(
+                filesDir = context.filesDir,
+                requestedRelativePath = relativePath,
+                managedFile = entity,
+            ) ?: throw NotFoundException("File not found")
 
-            // Ensure the file is within the app's files directory
-            if (!file.canonicalPath.startsWith(filesDir.canonicalPath)) {
-                throw BadRequestException("Invalid file path")
-            }
-
-            if (!file.exists() || !file.isFile) {
-                throw NotFoundException("File not found")
-            }
-
-            // Use managed file MIME type first because on-disk file names are UUID-only.
-            val managedFileMime = filesManager.getByRelativePath(relativePath)?.mimeType
-            val contentType = if (!managedFileMime.isNullOrBlank()) {
-                managedFileMime
-            } else {
-                when (file.extension.lowercase()) {
-                    "jpg", "jpeg" -> ContentType.Image.JPEG.toString()
-                    "png" -> ContentType.Image.PNG.toString()
-                    "gif" -> ContentType.Image.GIF.toString()
-                    "webp" -> ContentType("image", "webp").toString()
-                    "svg" -> ContentType.Image.SVG.toString()
-                    "pdf" -> ContentType.Application.Pdf.toString()
-                    "json" -> ContentType.Application.Json.toString()
-                    "txt", "log", "conf", "config", "diff", "patch" -> ContentType.Text.Plain.toString()
-                    "md" -> ContentType("text", "markdown").toString()
-                    "html", "htm" -> ContentType.Text.Html.toString()
-                    "css" -> ContentType.Text.CSS.toString()
-                    "xml" -> ContentType.Text.Xml.toString()
-                    "csv" -> ContentType.Text.CSV.toString()
-                    "yml", "yaml" -> ContentType("text", "yaml").toString()
-                    "ini", "toml", "env" -> ContentType.Text.Plain.toString()
-                    "go", "py", "rs", "java", "kt", "c", "cpp", "h", "cs", "rb", "php",
-                    "swift", "dart", "scala", "sh", "bash", "zsh", "js", "ts", "tsx",
-                    "jsx", "vue", "scss", "less", "sql", "graphql", "proto" -> ContentType.Text.Plain.toString()
-                    "mp4" -> ContentType("video", "mp4").toString()
-                    "webm" -> ContentType("video", "webm").toString()
-                    "mp3" -> ContentType.Audio.MPEG.toString()
-                    "wav" -> ContentType("audio", "wav").toString()
-                    "ogg" -> ContentType("audio", "ogg").toString()
-                    else -> ContentType.Application.OctetStream.toString()
-                }
-            }
-
+            val contentType = entity.mimeType.takeIf { it.isNotBlank() }
+                ?: ContentType.Application.OctetStream.toString()
             call.response.header("Content-Type", contentType)
             call.respondFile(file)
         }
