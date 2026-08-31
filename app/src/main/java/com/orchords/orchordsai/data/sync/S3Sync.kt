@@ -62,12 +62,31 @@ class S3Sync(
 
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
-        val result = client.listObjects(
-            prefix = "orchordsai_backups/",
-            maxKeys = 1000
-        ).getOrThrow()
+        val objects = buildList {
+            var continuationToken: String? = null
+            val seenContinuationTokens = HashSet<String>()
 
-        result.objects
+            while (true) {
+                val result = client.listObjects(
+                    prefix = "orchordsai_backups/",
+                    maxKeys = 1000,
+                    continuationToken = continuationToken,
+                ).getOrThrow()
+                addAll(result.objects)
+
+                if (!result.isTruncated) break
+
+                val nextToken = result.nextContinuationToken
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("S3 backup listing was truncated without a continuation token")
+                check(seenContinuationTokens.add(nextToken)) {
+                    "S3 backup listing repeated a continuation token"
+                }
+                continuationToken = nextToken
+            }
+        }
+
+        objects
             .filter { it.key.startsWith("orchordsai_backups/backup_") && it.key.endsWith(".zip") }
             .map { obj ->
                 S3BackupItem(
