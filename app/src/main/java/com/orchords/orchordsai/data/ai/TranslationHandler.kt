@@ -9,6 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import com.orchords.ai.core.ReasoningLevel
 import com.orchords.ai.provider.CustomBody
+import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ProviderManager
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.registry.ModelRegistry
@@ -19,6 +20,29 @@ import com.orchords.orchordsai.data.datastore.findModelById
 import com.orchords.orchordsai.data.datastore.findProvider
 import com.orchords.orchordsai.utils.applyPlaceholders
 import java.util.Locale
+
+internal fun translationGenerationParams(
+    model: Model,
+    reasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
+    temperature: Float? = null,
+    topP: Float? = null,
+    translationBodies: List<CustomBody> = emptyList(),
+): TextGenerationParams {
+    val translationKeys = translationBodies.mapTo(HashSet()) { it.key }
+    val conflictingKey = model.customBodies.firstOrNull { it.key in translationKeys }?.key
+    require(conflictingKey == null) {
+        "Translation request body conflicts with reserved translation field"
+    }
+
+    return TextGenerationParams(
+        model = model,
+        reasoningLevel = reasoningLevel,
+        temperature = temperature,
+        topP = topP,
+        customHeaders = model.customHeaders,
+        customBody = model.customBodies + translationBodies,
+    )
+}
 
 class TranslationHandler(
     private val providerManager: ProviderManager,
@@ -49,7 +73,7 @@ class TranslationHandler(
             providerHandler.streamText(
                 providerSetting = provider,
                 messages = messages,
-                params = TextGenerationParams(
+                params = translationGenerationParams(
                     model = model,
                     reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
                 ),
@@ -65,25 +89,24 @@ class TranslationHandler(
         } else {
             // Use Qwen MT model with special translation options
             val messages = listOf(UIMessage.user(sourceText))
+            val translationOptions = CustomBody(
+                key = "translation_options",
+                value = buildJsonObject {
+                    put("source_lang", JsonPrimitive("auto"))
+                    put(
+                        "target_lang",
+                        JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH)),
+                    )
+                },
+            )
             val result = providerHandler.generateText(
                 providerSetting = provider,
                 messages = messages,
-                params = TextGenerationParams(
+                params = translationGenerationParams(
                     model = model,
                     temperature = 0.3f,
                     topP = 0.95f,
-                    customBody = listOf(
-                        CustomBody(
-                            key = "translation_options",
-                            value = buildJsonObject {
-                                put("source_lang", JsonPrimitive("auto"))
-                                put(
-                                    "target_lang",
-                                    JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH)),
-                                )
-                            },
-                        )
-                    ),
+                    translationBodies = listOf(translationOptions),
                 ),
             )
             val translatedText = result.message.toText()
