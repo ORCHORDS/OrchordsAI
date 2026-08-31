@@ -1,0 +1,46 @@
+name: Dependency Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-ui/package.json'
+      - 'web-ui/pnpm-lock.yaml'
+      - '.github/workflows/dependency-audit.yml'
+  schedule:
+    - cron: '17 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pnpm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: Audit web-ui dependency graph
+        working-directory: web-ui
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm audit --json | tee pnpm-audit.json
