@@ -12,13 +12,12 @@ import com.orchords.orchordsai.data.datastore.Settings
 import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.data.datastore.WebDavConfig
 import com.orchords.orchordsai.data.datastore.migration.SettingsJsonMigrator
+import com.orchords.orchordsai.data.sync.newBackupFileName
 import com.orchords.orchordsai.utils.fileSizeToString
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -31,13 +30,10 @@ class WebDavSync(
     private val context: Context,
     private val httpClient: HttpClient,
 ) {
-    private fun getClient(config: WebDavConfig): WebDavClient {
-        return WebDavClient(config, httpClient)
-    }
+    private fun getClient(config: WebDavConfig): WebDavClient = WebDavClient(config, httpClient)
 
     suspend fun testConnection(config: WebDavConfig) = withContext(Dispatchers.IO) {
         val client = getClient(config)
-        // Test by listing the root directory
         client.propfind(depth = 0).getOrThrow()
         Log.i(TAG, "testConnection: Connection successful")
     }
@@ -45,29 +41,15 @@ class WebDavSync(
     suspend fun backup(config: WebDavConfig) = withContext(Dispatchers.IO) {
         val file = prepareBackupFile(config)
         val client = getClient(config)
-
-        // Ensure the backup directory exists
         client.ensureCollectionExists().getOrThrow()
-
-        // Upload the backup file
-        client.put(
-            path = file.name,
-            file = file,
-            contentType = "application/zip"
-        ).getOrThrow()
-
+        client.put(path = file.name, file = file, contentType = "application/zip").getOrThrow()
         Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
-
-        // Clean up temp file
         file.delete()
     }
 
     suspend fun listBackupFiles(config: WebDavConfig): List<WebDavBackupItem> = withContext(Dispatchers.IO) {
         val client = getClient(config)
-
-        // Ensure the backup directory exists
         client.ensureCollectionExists().getOrThrow()
-
         val resources = client.list().getOrThrow()
 
         resources
@@ -88,16 +70,11 @@ class WebDavSync(
         val backupFile = File(context.cacheDir, item.displayName)
 
         try {
-            // Download backup file directly to file to avoid OOM
             Log.i(TAG, "restore: Downloading ${item.displayName}")
             client.downloadToFile(item.displayName, backupFile).getOrThrow()
-
             Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
-
-            // Restore from backup file
             restoreFromBackupFile(backupFile, config)
         } finally {
-            // Clean up temp file
             if (backupFile.exists()) {
                 backupFile.delete()
                 Log.i(TAG, "restore: Cleaned up temporary backup file")
@@ -113,14 +90,8 @@ class WebDavSync(
 
     suspend fun restoreFromLocalFile(file: File, config: WebDavConfig) = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromLocalFile: Starting restore from ${file.absolutePath}")
-
-        if (!file.exists()) {
-            throw Exception("Backup file does not exist")
-        }
-
-        if (!file.canRead()) {
-            throw Exception("Cannot read backup file")
-        }
+        if (!file.exists()) throw Exception("Backup file does not exist")
+        if (!file.canRead()) throw Exception("Cannot read backup file")
 
         try {
             restoreFromBackupFile(file, config)
@@ -132,14 +103,11 @@ class WebDavSync(
     }
 
     suspend fun prepareBackupFile(config: WebDavConfig): File = withContext(Dispatchers.IO) {
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-        val backupFile = File(context.cacheDir, "backup_$timestamp.zip")
-
-        if (backupFile.exists()) {
-            backupFile.delete()
+        val backupFile = File(context.cacheDir, newBackupFileName())
+        check(backupFile.createNewFile()) {
+            "Failed to allocate unique WebDAV backup staging file"
         }
 
-        // Create zip file and backup data
         ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             addVirtualFileToZip(
                 zipOut = zipOut,
@@ -147,33 +115,23 @@ class WebDavSync(
                 content = json.encodeToString(settingsStore.settingsFlow.value)
             )
 
-            // Backup database files
             if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
                 val dbFile = context.getDatabasePath("orchordsai")
-                if (dbFile.exists()) {
-                    addFileToZip(zipOut, dbFile, "orchordsai.db")
-                }
+                if (dbFile.exists()) addFileToZip(zipOut, dbFile, "orchordsai.db")
 
                 val walFile = File(dbFile.parentFile, "orchordsai-wal")
-                if (walFile.exists()) {
-                    addFileToZip(zipOut, walFile, "orchordsai-wal")
-                }
+                if (walFile.exists()) addFileToZip(zipOut, walFile, "orchordsai-wal")
 
                 val shmFile = File(dbFile.parentFile, "orchordsai-shm")
-                if (shmFile.exists()) {
-                    addFileToZip(zipOut, shmFile, "orchordsai-shm")
-                }
+                if (shmFile.exists()) addFileToZip(zipOut, shmFile, "orchordsai-shm")
             }
 
-            // Backup app files
             if (config.items.contains(WebDavConfig.BackupItem.FILES)) {
                 val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
                 if (uploadFolder.exists() && uploadFolder.isDirectory) {
                     Log.i(TAG, "prepareBackupFile: Backing up files from ${uploadFolder.absolutePath}")
                     uploadFolder.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            addFileToZip(zipOut, file, "${FileFolders.UPLOAD}/${file.name}")
-                        }
+                        if (file.isFile) addFileToZip(zipOut, file, "${FileFolders.UPLOAD}/${file.name}")
                     }
                 } else {
                     Log.w(TAG, "prepareBackupFile: Upload folder does not exist or is not a directory")
@@ -182,12 +140,7 @@ class WebDavSync(
                 val skillsFolder = File(context.filesDir, FileFolders.SKILLS)
                 if (skillsFolder.exists() && skillsFolder.isDirectory) {
                     Log.i(TAG, "prepareBackupFile: Backing up skills from ${skillsFolder.absolutePath}")
-                    addDirectoryToZip(
-                        zipOut = zipOut,
-                        rootDir = skillsFolder,
-                        currentDir = skillsFolder,
-                        entryPrefix = "${FileFolders.SKILLS}/"
-                    )
+                    addDirectoryToZip(zipOut, skillsFolder, skillsFolder, "${FileFolders.SKILLS}/")
                 } else {
                     Log.w(TAG, "prepareBackupFile: Skills folder does not exist or is not a directory")
                 }
@@ -196,9 +149,7 @@ class WebDavSync(
                 if (fontsFolder.exists() && fontsFolder.isDirectory) {
                     Log.i(TAG, "prepareBackupFile: Backing up fonts from ${fontsFolder.absolutePath}")
                     fontsFolder.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            addFileToZip(zipOut, file, "${FileFolders.FONTS}/${file.name}")
-                        }
+                        if (file.isFile) addFileToZip(zipOut, file, "${FileFolders.FONTS}/${file.name}")
                     }
                 } else {
                     Log.w(TAG, "prepareBackupFile: Fonts folder does not exist or is not a directory")
@@ -206,10 +157,7 @@ class WebDavSync(
             }
         }
 
-        Log.i(
-            TAG,
-            "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})"
-        )
+        Log.i(TAG, "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})")
         backupFile
     }
 
@@ -221,7 +169,6 @@ class WebDavSync(
             while (zipIn.nextEntry.also { entry = it } != null) {
                 entry?.let { zipEntry ->
                     Log.i(TAG, "restoreFromBackupFile: Processing entry ${zipEntry.name}")
-
                     when (zipEntry.name) {
                         "settings.json" -> {
                             val settingsJson = zipIn.readBytes().toString(Charsets.UTF_8)
@@ -241,97 +188,54 @@ class WebDavSync(
                             if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
                                 val dbFile = when (zipEntry.name) {
                                     "orchordsai.db" -> context.getDatabasePath("orchordsai")
-                                    "orchordsai-wal" -> File(
-                                        context.getDatabasePath("orchordsai").parentFile,
-                                        "orchordsai-wal"
-                                    )
-
-                                    "orchordsai-shm" -> File(
-                                        context.getDatabasePath("orchordsai").parentFile,
-                                        "orchordsai-shm"
-                                    )
-
+                                    "orchordsai-wal" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-wal")
+                                    "orchordsai-shm" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-shm")
                                     else -> null
                                 }
-
                                 dbFile?.let { targetFile ->
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}"
-                                    )
+                                    Log.i(TAG, "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}")
                                     targetFile.parentFile?.mkdirs()
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        zipIn.copyTo(outputStream)
-                                    }
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                    )
+                                    FileOutputStream(targetFile).use { outputStream -> zipIn.copyTo(outputStream) }
+                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                 }
                             }
                         }
 
                         else -> {
-                            if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.UPLOAD}/")
-                            ) {
+                            if (config.items.contains(WebDavConfig.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.UPLOAD}/")) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.UPLOAD}/")
                                 if (fileName.isNotEmpty()) {
                                     val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
-                                    if (!uploadFolder.exists()) {
-                                        uploadFolder.mkdirs()
-                                        Log.i(TAG, "restoreFromBackupFile: Created upload directory")
-                                    }
-
+                                    if (!uploadFolder.exists()) uploadFolder.mkdirs()
                                     val targetFile = File(uploadFolder, fileName)
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}"
-                                    )
-
+                                    Log.i(TAG, "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}")
                                     try {
-                                        FileOutputStream(targetFile).use { outputStream ->
-                                            zipIn.copyTo(outputStream)
-                                        }
-                                        Log.i(
-                                            TAG,
-                                            "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                        )
+                                        FileOutputStream(targetFile).use { outputStream -> zipIn.copyTo(outputStream) }
+                                        Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                     } catch (e: Exception) {
                                         Log.e(TAG, "restoreFromBackupFile: Failed to restore file ${zipEntry.name}", e)
                                         throw Exception("Failed to restore file ${zipEntry.name}: ${e.message}")
                                     }
                                 }
-                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.SKILLS}/")
-                            ) {
+                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
                                 restoreSkillEntry(zipIn, zipEntry.name)
-                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
-                                zipEntry.name.startsWith("${FileFolders.FONTS}/")
-                            ) {
+                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
                                 if (fileName.isNotEmpty() && !fileName.contains('/')) {
                                     val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
                                     val targetFile = File(fontsFolder, fileName)
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        zipIn.copyTo(outputStream)
-                                    }
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                    )
+                                    FileOutputStream(targetFile).use { outputStream -> zipIn.copyTo(outputStream) }
+                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
                                 }
                             } else {
                                 Log.i(TAG, "restoreFromBackupFile: Skipping entry ${zipEntry.name}")
                             }
                         }
                     }
-
                     zipIn.closeEntry()
                 }
             }
         }
-
         Log.i(TAG, "restoreFromBackupFile: Restore completed successfully")
     }
 
@@ -353,12 +257,7 @@ class WebDavSync(
     ) {
         currentDir.listFiles()?.forEach { file ->
             if (file.isDirectory) {
-                addDirectoryToZip(
-                    zipOut = zipOut,
-                    rootDir = rootDir,
-                    currentDir = file,
-                    entryPrefix = entryPrefix,
-                )
+                addDirectoryToZip(zipOut, rootDir, file, entryPrefix)
             } else if (file.isFile) {
                 val relativePath = file.relativeTo(rootDir).invariantSeparatorsPath
                 addFileToZip(zipOut, file, "$entryPrefix$relativePath")
@@ -370,7 +269,6 @@ class WebDavSync(
         val relativePath = entryName.substringAfter("${FileFolders.SKILLS}/")
         val skillName = relativePath.substringBefore('/', missingDelimiterValue = "")
         val skillRelativePath = relativePath.substringAfter('/', missingDelimiterValue = "")
-
         if (skillName.isBlank() || skillRelativePath.isBlank()) {
             Log.w(TAG, "restoreFromBackupFile: Invalid skill entry $entryName")
             return
@@ -386,9 +284,7 @@ class WebDavSync(
         targetFile.parentFile?.mkdirs()
 
         try {
-            FileOutputStream(targetFile).use { outputStream ->
-                zipIn.copyTo(outputStream)
-            }
+            FileOutputStream(targetFile).use { outputStream -> zipIn.copyTo(outputStream) }
             Log.i(TAG, "restoreFromBackupFile: Restored skill file $entryName (${targetFile.length()} bytes)")
         } catch (e: Exception) {
             Log.e(TAG, "restoreFromBackupFile: Failed to restore skill file $entryName", e)
@@ -409,5 +305,5 @@ data class WebDavBackupItem(
     val href: String,
     val displayName: String,
     val size: Long,
-    val lastModified: Instant,
+    val lastModified: Instant?,
 )
