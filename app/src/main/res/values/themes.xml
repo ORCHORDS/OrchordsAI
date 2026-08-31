@@ -2,4 +2,10 @@
 <resources>
 
 <style name="Theme.OrchordsAI" parent="Theme.Material3.DayNight.NoActionBar" />
+
+<style name="Theme.OrchordsAI.Starting" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">@color/orchords_splash_bg</item>
+    <item name="windowSplashScreenAnimatedIcon">@drawable/orchords_splash_icon</item>
+    <item name="postSplashScreenTheme">@style/Theme.OrchordsAI</item>
+</style>
 </resources>

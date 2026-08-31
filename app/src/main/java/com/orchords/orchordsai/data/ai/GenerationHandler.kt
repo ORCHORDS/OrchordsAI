@@ -442,12 +442,14 @@ class GenerationHandler(
                 while (true) {
                     val streamChunkHandler = StreamChunkHandler(model)
                     var attemptMessages = responseBaseMessages
+                    var hasReceivedProviderEvent = false
                     try {
                         providerImpl.streamText(
                             providerSetting = provider,
                             messages = internalMessages,
                             params = params
                         ).collect { chunk ->
+                            hasReceivedProviderEvent = true
                             try {
                                 if (retryCount > 0) {
                                     processingStatus.value = null
@@ -470,6 +472,7 @@ class GenerationHandler(
                             error = error,
                             retryCount = retryCount,
                             processingStatus = processingStatus,
+                            hasReceivedProviderEvent = hasReceivedProviderEvent,
                         )
                     }
                 }
@@ -511,9 +514,16 @@ class GenerationHandler(
         error: Throwable,
         retryCount: Int,
         processingStatus: MutableStateFlow<String?>,
+        hasReceivedProviderEvent: Boolean = false,
     ): Int {
         currentCoroutineContext().ensureActive()
-        if (error !is IOException || retryCount >= MAX_PROVIDER_NETWORK_RETRIES) {
+        if (!canAutomaticallyRetryProviderRequest(
+                error = error,
+                retryCount = retryCount,
+                maxRetries = MAX_PROVIDER_NETWORK_RETRIES,
+                hasReceivedProviderEvent = hasReceivedProviderEvent,
+            )
+        ) {
             throw error
         }
 
@@ -521,7 +531,7 @@ class GenerationHandler(
         val retryDelay = INITIAL_PROVIDER_RETRY_DELAY_MS shl retryCount
         processingStatus.value = context.getString(
             R.string.chat_generation_network_retrying,
-            getNetworkErrorMessage(error),
+            getNetworkErrorMessage(error as IOException),
             nextRetryCount,
             MAX_PROVIDER_NETWORK_RETRIES,
         )

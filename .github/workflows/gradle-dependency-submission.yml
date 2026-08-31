@@ -1,0 +1,42 @@
+name: Gradle Dependency Submission
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.gradle'
+      - '**/*.gradle.kts'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - '.github/workflows/gradle-dependency-submission.yml'
+  schedule:
+    - cron: '31 2 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gradle-dependency-submission-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Submit resolved Gradle dependency graph
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0

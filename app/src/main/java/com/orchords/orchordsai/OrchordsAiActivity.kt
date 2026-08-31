@@ -31,7 +31,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
@@ -64,6 +66,7 @@ import com.orchords.orchordsai.data.db.MigrationState
 import com.orchords.orchordsai.data.event.AppEvent
 import com.orchords.orchordsai.data.event.AppEventBus
 import com.orchords.orchordsai.ui.activity.SafeModeActivity
+import com.orchords.orchordsai.ui.components.ui.OrchardsStartupLoadingIndicator
 import com.orchords.orchordsai.ui.components.ui.TTSController
 import com.orchords.orchordsai.ui.context.LocalASRState
 import com.orchords.orchordsai.ui.context.LocalNavController
@@ -127,8 +130,11 @@ import com.orchords.orchordsai.ui.pages.translator.TranslatorPage
 import com.orchords.orchordsai.ui.pages.webview.WebViewPage
 import com.orchords.orchordsai.ui.theme.LocalDarkMode
 import com.orchords.orchordsai.ui.theme.OrchordsAITheme
+import com.orchords.orchordsai.ui.components.ui.OrchardsStartupLoadingIndicator
+import com.orchords.orchordsai.R
 import com.orchords.orchordsai.utils.CrashHandler
 import com.orchords.orchordsai.utils.openUsageAccessSettings
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import okhttp3.OkHttpClient
 import org.koin.android.ext.android.inject
 import org.koin.compose.koinInject
@@ -158,6 +164,7 @@ class OrchordsAiActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
@@ -168,6 +175,7 @@ class OrchordsAiActivity : ComponentActivity() {
         }
         setContent {
             OrchordsAITheme {
+                var showStartup by remember { mutableStateOf(savedInstanceState == null) }
                 setSingletonImageLoaderFactory { context ->
                     ImageLoader.Builder(context)
                         .crossfade(true)
@@ -187,7 +195,25 @@ class OrchordsAiActivity : ComponentActivity() {
                         }
                         .build()
                 }
-                AppRoutes()
+                Box(Modifier.fillMaxSize()) {
+                    AppRoutes()
+                    AnimatedVisibility(
+                        visible = showStartup,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            OrchardsStartupLoadingIndicator(
+                                onFinished = { showStartup = false },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -549,23 +575,9 @@ class OrchordsAiActivity : ComponentActivity() {
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                CircularProgressIndicator()
-                                Text(
-                                    text = stringResource(R.string.db_migrating),
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                if (state != null) {
-                                    Text(
-                                        text = "v${state.from} → v${state.to}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                            OrchardsStartupLoadingIndicator(
+                                detail = state?.let { "v${it.from} → v${it.to}" },
+                            )
                         }
                     }
                 }

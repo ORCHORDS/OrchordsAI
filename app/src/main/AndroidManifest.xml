@@ -67,7 +67,7 @@
       android:configChanges="keyboardHidden|orientation|screenSize"
       android:exported="true"
       android:importantForAutofill="noExcludeDescendants"
-      android:theme="@style/Theme.OrchordsAI"
+      android:theme="@style/Theme.OrchordsAI.Starting"
       android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

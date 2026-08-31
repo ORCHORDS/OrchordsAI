@@ -165,6 +165,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val chatListState = rememberLazyListState()
+    var followPolicy by remember(id) {
+        mutableStateOf(ViewportFollowPolicy(id.toString()))
+    }
+    LaunchedEffect(conversation.id) {
+        followPolicy = followPolicy.onConversationChanged(conversation.id.toString()).policy
+    }
     LaunchedEffect(nodeId, conversation.messageNodes.size) {
         if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
             if (nodeId != null) {
@@ -207,6 +213,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
+                    followPolicy = followPolicy,
+                    onFollowPolicyChange = { followPolicy = it },
                 )
             }
         }
@@ -239,6 +247,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
+                    followPolicy = followPolicy,
+                    onFollowPolicyChange = { followPolicy = it },
                 )
             }
             BackHandler(drawerState.isOpen) {
@@ -265,6 +275,8 @@ private fun ChatPageContent(
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
+    followPolicy: ViewportFollowPolicy,
+    onFollowPolicyChange: (ViewportFollowPolicy) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -365,6 +377,7 @@ private fun ChatPageContent(
                             toaster.show("Select a model first", type = ToastType.Error)
                             return@ChatInput
                         }
+                        onFollowPolicyChange(followPolicy.onSend())
                         if (inputState.isEditing()) {
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
@@ -380,6 +393,7 @@ private fun ChatPageContent(
                         inputState.clearInput()
                     },
                     onLongSendClick = {
+                        onFollowPolicyChange(followPolicy.onSend())
                         if (inputState.isEditing()) {
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
@@ -435,6 +449,8 @@ private fun ChatPageContent(
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
+                followPolicy = followPolicy,
+                onFollowPolicyChange = onFollowPolicyChange,
                 onRegenerate = {
                     vm.regenerateAtMessage(it)
                 },

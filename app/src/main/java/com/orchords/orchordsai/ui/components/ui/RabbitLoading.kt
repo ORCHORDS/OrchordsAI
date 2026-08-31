@@ -1,39 +1,47 @@
 package com.orchords.orchordsai.ui.components.ui
 
-import android.graphics.drawable.AnimatedVectorDrawable
-import android.widget.ImageView
-import androidx.appcompat.content.res.AppCompatResources
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.ui.context.LocalSettings
 
 @Composable
 fun RabbitLoadingIndicator(modifier: Modifier = Modifier) {
     val useAppIconStyleLoadingIndicator = LocalSettings.current.displaySetting.useAppIconStyleLoadingIndicator
-    val primaryColor = MaterialTheme.colorScheme.primary.toArgb()
 
     if (useAppIconStyleLoadingIndicator) {
-        AndroidView(
-            modifier = modifier,
-            factory = { context ->
-                ImageView(context).apply {
-                    val drawable = AppCompatResources.getDrawable(context, R.drawable.rabbit) as? AnimatedVectorDrawable
-                    setImageDrawable(drawable)
-                    drawable?.setTint(primaryColor)
-                    drawable?.start()
-                }
+        val logoRes = if (isSystemInDarkTheme()) {
+            R.drawable.orchords_logo_white
+        } else {
+            R.drawable.orchords_logo_blue
+        }
+        val pulse = rememberInfiniteTransition(label = "OrchordsLoadingPulse")
+        val alpha by pulse.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 700),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "OrchordsLoadingAlpha",
+        )
+        Image(
+            painter = painterResource(logoRes),
+            contentDescription = null,
+            modifier = modifier.graphicsLayer {
+                this.alpha = alpha
             },
-            update = { imageView ->
-                (imageView.drawable as? AnimatedVectorDrawable)?.apply {
-                    setTint(primaryColor)
-                    start()
-                }
-            }
         )
     } else {
         ContainedLoadingIndicator(

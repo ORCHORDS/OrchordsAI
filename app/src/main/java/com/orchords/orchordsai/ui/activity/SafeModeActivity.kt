@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -53,6 +54,7 @@ import kotlinx.coroutines.launch
 import com.orchords.orchordsai.data.datastore.Settings
 import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.data.datastore.getCurrentAssistant
+import com.orchords.orchordsai.ui.components.ui.UIAvatar
 import com.orchords.orchordsai.ui.hooks.writeStringPreference
 import com.orchords.orchordsai.ui.theme.OrchordsAITheme
 import com.orchords.orchordsai.OrchordsAiActivity
@@ -253,13 +255,23 @@ private fun AssistantPickerSheet(
                             else MaterialTheme.colorScheme.onSurface,
                         ),
                     ) {
-                        Text(
-                            text = assistant.name.ifEmpty { stringResource(R.string.safe_mode_default_assistant) },
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            UIAvatar(
+                                name = assistant.name,
+                                value = assistant.avatar,
+                                useDefaultAssistantBranding = assistant.name.isBlank(),
+                                modifier = Modifier.size(40.dp),
+                            )
+                            Text(
+                                text = assistant.name.ifEmpty { stringResource(R.string.safe_mode_default_assistant) },
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
                     }
                 }
             }

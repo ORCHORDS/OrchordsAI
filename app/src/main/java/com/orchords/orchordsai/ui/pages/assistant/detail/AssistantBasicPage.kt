@@ -131,6 +131,7 @@ internal fun AssistantBasicContent(
             UIAvatar(
                 value = assistant.avatar,
                 name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                useDefaultAssistantBranding = assistant.name.isBlank(),
                 onUpdate = { avatar ->
                     onUpdate(
                         assistant.copy(

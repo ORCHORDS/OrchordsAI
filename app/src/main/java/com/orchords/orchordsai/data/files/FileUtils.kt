@@ -10,10 +10,12 @@ import android.webkit.MimeTypeMap
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 import kotlin.uuid.Uuid
 
 object FileUtils {
     private const val TAG = "FileUtils"
+    private const val MIME_SNIFF_BYTES = 640
 
     fun buildUuidFileName(displayName: String?, mimeType: String?): String {
         val extFromName = displayName
@@ -72,7 +74,17 @@ object FileUtils {
     fun getFileMimeType(context: Context, uri: Uri): String? {
         return when (uri.scheme) {
             "content" -> runCatching {
-                context.contentResolver.getType(uri)
+                val providerMime = context.contentResolver.getType(uri)
+                val fileName = getFileNameFromUri(context, uri)
+                if (!isAmbiguousTsMime(fileName, providerMime)) {
+                    providerMime
+                } else {
+                    resolveAmbiguousTsMime(
+                        fileName = fileName,
+                        providerMime = providerMime,
+                        sample = readUriSample(context, uri),
+                    )
+                }
             }.onFailure {
                 Log.w(TAG, "getFileMimeType: Failed to resolve MIME for $uri", it)
             }.getOrNull()
@@ -82,6 +94,9 @@ object FileUtils {
 
     fun guessMimeType(file: File, fileName: String): String {
         val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext == "ts") {
+            return classifyTsSample(readFileSample(file))
+        }
         if (ext.isNotEmpty()) {
             return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
                 ?: "application/octet-stream"
@@ -95,29 +110,24 @@ object FileUtils {
     }
 
     private fun sniffMimeType(file: File): String {
-        val header = ByteArray(16)
-        val read = runCatching {
-            FileInputStream(file).use { input ->
-                input.read(header)
-            }
-        }.getOrDefault(-1)
+        val sample = readFileSample(file)
+        if (sample.isEmpty()) return "application/octet-stream"
 
-        if (read <= 0) return "application/octet-stream"
-
-        if (header.startsWithBytes(0x89, 0x50, 0x4E, 0x47)) return "image/png"
-        if (header.startsWithBytes(0xFF, 0xD8, 0xFF)) return "image/jpeg"
-        if (header.startsWithBytes(0x47, 0x49, 0x46, 0x38)) return "image/gif"
-        if (header.startsWithBytes(0x25, 0x50, 0x44, 0x46)) return "application/pdf"
-        if (header.startsWithBytes(0x50, 0x4B, 0x03, 0x04)) return "application/zip"
-        if (header.startsWithBytes(0x50, 0x4B, 0x05, 0x06)) return "application/zip"
-        if (header.startsWithBytes(0x50, 0x4B, 0x07, 0x08)) return "application/zip"
-        if (header.startsWithBytes(0x52, 0x49, 0x46, 0x46) && header.sliceArray(8..11)
-                .contentEquals(byteArrayOf(0x57, 0x45, 0x42, 0x50))
+        if (sample.startsWithBytes(0x89, 0x50, 0x4E, 0x47)) return "image/png"
+        if (sample.startsWithBytes(0xFF, 0xD8, 0xFF)) return "image/jpeg"
+        if (sample.startsWithBytes(0x47, 0x49, 0x46, 0x38)) return "image/gif"
+        if (sample.startsWithBytes(0x25, 0x50, 0x44, 0x46)) return "application/pdf"
+        if (sample.startsWithBytes(0x50, 0x4B, 0x03, 0x04)) return "application/zip"
+        if (sample.startsWithBytes(0x50, 0x4B, 0x05, 0x06)) return "application/zip"
+        if (sample.startsWithBytes(0x50, 0x4B, 0x07, 0x08)) return "application/zip"
+        if (sample.size >= 12 &&
+            sample.startsWithBytes(0x52, 0x49, 0x46, 0x46) &&
+            sample.sliceArray(8..11).contentEquals(byteArrayOf(0x57, 0x45, 0x42, 0x50))
         ) {
             return "image/webp"
         }
-        if (read >= 12 && header.sliceArray(4..7).toString(Charsets.US_ASCII) == "ftyp") {
-            when (header.sliceArray(8..11).toString(Charsets.US_ASCII)) {
+        if (sample.size >= 12 && sample.sliceArray(4..7).toString(Charsets.US_ASCII) == "ftyp") {
+            when (sample.sliceArray(8..11).toString(Charsets.US_ASCII)) {
                 "heic", "heix", "heim", "heis",
                 "hevc", "hevx", "hevm", "hevs",
                 "mif1", "msf1", "heif",
@@ -127,34 +137,29 @@ object FileUtils {
             }
         }
 
-        val textSample = runCatching {
-            val sample = ByteArray(512)
-            FileInputStream(file).use { input ->
-                val len = input.read(sample)
-                if (len <= 0) return@runCatching null
-                sample.copyOf(len)
-            }
-        }.getOrNull()
-        if (textSample != null && isLikelyText(textSample)) {
+        if (isLikelyTextSample(sample)) {
             return "text/plain"
         }
 
         return "application/octet-stream"
     }
 
-    private fun isLikelyText(bytes: ByteArray): Boolean {
-        var printable = 0
-        var total = 0
-        bytes.forEach { b ->
-            val c = b.toInt() and 0xFF
-            total += 1
-            if (c == 0x09 || c == 0x0A || c == 0x0D) {
-                printable += 1
-            } else if (c in 0x20..0x7E) {
-                printable += 1
-            }
+    private fun readUriSample(context: Context, uri: Uri): ByteArray = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            input.readBoundedSample()
+        } ?: ByteArray(0)
+    }.getOrDefault(ByteArray(0))
+
+    private fun readFileSample(file: File): ByteArray = runCatching {
+        FileInputStream(file).use { input ->
+            input.readBoundedSample()
         }
-        return total > 0 && printable.toDouble() / total >= 0.8
+    }.getOrDefault(ByteArray(0))
+
+    private fun InputStream.readBoundedSample(): ByteArray {
+        val sample = ByteArray(MIME_SNIFF_BYTES)
+        val length = read(sample)
+        return if (length > 0) sample.copyOf(length) else ByteArray(0)
     }
 
     private fun ByteArray.startsWithBytes(vararg values: Int): Boolean {

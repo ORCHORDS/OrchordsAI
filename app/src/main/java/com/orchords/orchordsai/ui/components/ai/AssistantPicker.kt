@@ -82,6 +82,7 @@ fun AssistantPicker(
                 UIAvatar(
                     name = state.currentAssistant.name.ifEmpty { defaultAssistantName },
                     value = state.currentAssistant.avatar,
+                    useDefaultAssistantBranding = state.currentAssistant.name.isBlank(),
                     onClick = onClickSetting
                 )
             }
@@ -223,6 +224,7 @@ private fun AssistantItem(
             UIAvatar(
                 name = assistant.name.ifEmpty { defaultAssistantName },
                 value = assistant.avatar,
+                useDefaultAssistantBranding = assistant.name.isBlank(),
                 modifier = Modifier.size(32.dp)
             )
         },

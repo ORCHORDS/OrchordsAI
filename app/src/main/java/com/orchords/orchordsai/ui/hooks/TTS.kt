@@ -104,7 +104,10 @@ interface CustomTtsState {
     /** Resumes the paused playback. */
     fun resume()
 
-    /** Skips to the next chunk in the queue. */
+    /** Retries the chunk that interrupted playback. */
+    fun retryFailedChunk()
+
+    /** Explicitly skips the failed or next chunk. */
     fun skipNext()
 
     /** Fast forward current playback by [ms]. */
@@ -159,6 +162,10 @@ private class CustomTtsStateImpl(
     override fun resume() {
         controller.resume()
         Log.d("CustomTtsState", "TTS resumed")
+    }
+
+    override fun retryFailedChunk() {
+        controller.retryFailedChunk()
     }
 
     override fun skipNext() {

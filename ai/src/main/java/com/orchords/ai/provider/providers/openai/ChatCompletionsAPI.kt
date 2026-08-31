@@ -363,8 +363,7 @@ class ChatCompletionsAPI(
                         if (level.isEnabled && level != ReasoningLevel.AUTO) {
                             val effort = when (level) {
                                 ReasoningLevel.MEDIUM, ReasoningLevel.HIGH -> "high"
-                                ReasoningLevel.MAX -> "max"
-                                else -> level.effort
+                                else -> normalizeDeepSeekCompatibleReasoningEffort(params.model.modelId, level)
                             }
                             put("reasoning_effort", effort)
                         }
@@ -389,13 +388,17 @@ class ChatCompletionsAPI(
 
                     "opencode.ai" -> {
                         if (level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", level.effort)
+                            put(
+                                "reasoning_effort",
+                                normalizeDeepSeekCompatibleReasoningEffort(params.model.modelId, level),
+                            )
                         }
                     }
 
                     else -> {
                         if (level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", if (level.effort == "none") "low" else level.effort)
+                            val effort = normalizeDeepSeekCompatibleReasoningEffort(params.model.modelId, level)
+                            put("reasoning_effort", if (effort == "none") "low" else effort)
                         }
                     }
                 }

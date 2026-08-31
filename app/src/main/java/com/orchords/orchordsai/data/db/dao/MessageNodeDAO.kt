@@ -40,6 +40,9 @@ interface MessageNodeDAO {
     @Query("DELETE FROM message_node WHERE id = :nodeId")
     suspend fun deleteById(nodeId: String)
 
+    @Query("SELECT COUNT(*) FROM message_node WHERE json_valid(messages) = 0")
+    suspend fun getInvalidMessageJsonCount(): Int
+
     @RawQuery
     suspend fun getTokenStatsRaw(query: SupportSQLiteQuery): MessageTokenStats
 
@@ -56,12 +59,20 @@ data class MessageTokenStats(
 
 data class MessageDayCount(val day: String, val count: Int)
 
+/**
+ * Always hand json_each valid JSON. Filtering with a WHERE json_valid(...) predicate is not enough:
+ * SQLite is free to evaluate the table-valued json_each function before the WHERE clause and a
+ * malformed persisted row would still abort the whole statistics query.
+ */
+private const val SAFE_MESSAGES_JSON =
+    "CASE WHEN json_valid(mn.messages) THEN mn.messages ELSE '[]' END"
+
 private val TOKEN_STATS_SQL = SimpleSQLiteQuery(
     "SELECT COUNT(*) AS totalMessages, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.promptTokens') AS INTEGER)), 0) AS promptTokens, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.completionTokens') AS INTEGER)), 0) AS completionTokens, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.cachedTokens') AS INTEGER)), 0) AS cachedTokens " +
-        "FROM message_node mn, json_each(mn.messages) j"
+        "FROM message_node mn, json_each($SAFE_MESSAGES_JSON) j"
 )
 
 suspend fun MessageNodeDAO.getTokenStats(): MessageTokenStats = getTokenStatsRaw(TOKEN_STATS_SQL)
@@ -71,11 +82,10 @@ suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String): List<Messag
         SimpleSQLiteQuery(
             "SELECT substr(json_extract(j.value, '$.createdAt'), 1, 10) AS day, " +
                 "COUNT(*) AS count " +
-                "FROM message_node mn, json_each(mn.messages) j " +
+                "FROM message_node mn, json_each($SAFE_MESSAGES_JSON) j " +
                 "WHERE json_extract(j.value, '$.role') = 'user' " +
                 "AND json_extract(j.value, '$.createdAt') >= ? " +
                 "GROUP BY day",
             arrayOf(startDate)
         )
     )
-

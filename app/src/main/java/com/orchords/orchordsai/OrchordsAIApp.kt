@@ -33,6 +33,7 @@ import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.service.WebServerService
 import com.orchords.orchordsai.utils.CrashHandler
 import com.orchords.orchordsai.utils.DatabaseUtil
+import com.orchords.orchordsai.utils.StartupSoundPlayer
 import com.orchords.orchordsai.data.repository.WorkspaceRepository
 import com.orchords.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
@@ -50,12 +51,15 @@ const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 class OrchordsAIApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        StartupSoundPlayer(this).playOnce(R.raw.loader_start)
+
         startKoin {
             androidLogger()
             androidContext(this@OrchordsAIApp)
             workManagerFactory()
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
+
         this.createNotificationChannel()
 
         // set cursor window size to 32MB

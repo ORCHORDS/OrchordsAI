@@ -1,0 +1,107 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '31 3 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload the SARIF results.
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Android Gradle build only works under manual build control:
+          # default setup's autobuild cannot build this project (verified:
+          # its Analyze (java-kotlin) job fails), which is what the "Code
+          # scanning configuration error" banner on the Security tab reports.
+          # Compiling the debug Kotlin sources is sufficient for the
+          # java-kotlin extractor and needs neither signing nor packaging.
+          # NOTE: default setup MUST stay disabled — advanced uploads are
+          # rejected while it is enabled (verified 2026-08-31).
+          - language: java-kotlin
+            build: true
+          - language: javascript-typescript
+            build: false
+          - language: actions
+            build: false
+          - language: c-cpp
+            build: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Verify material-color-utilities source identity
+        if: matrix.build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule status --recursive
+          expected="$(git ls-tree HEAD material3/material-color-utilities | awk '{print $3}')"
+          actual="$(git -C material3/material-color-utilities rev-parse HEAD)"
+          test -n "$expected"
+          test "$actual" = "$expected"
+          test -f material3/material-color-utilities/kotlin/dynamiccolor/DynamicScheme.kt
+
+      - name: Set up JDK
+        if: matrix.build
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify material3 dependency identity
+        if: matrix.build
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/material3-debugCompileClasspath.txt"
+          ./gradlew :material3:dependencies --configuration debugCompileClasspath --no-daemon > "$report"
+          if grep -Eqi '(^|[ :])material-color-utilities([ :]|$)' "$report"; then
+            echo "::error::material-color-utilities must come only from the pinned Git submodule"
+            grep -Ei 'material-color-utilities' "$report" || true
+            exit 1
+          fi
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build && 'manual' || 'none' }}
+
+      - name: Compile material3 for extraction
+        if: matrix.build
+        run: ./gradlew :material3:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Verify material3 semantic mappings
+        if: matrix.build
+        run: ./gradlew :material3:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compile app for extraction
+        if: matrix.build
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"

@@ -4,7 +4,7 @@ export function getDisplayName(value: string | null | undefined, fallback: strin
 }
 
 export function getAssistantDisplayName(name: string | null | undefined): string {
-  return getDisplayName(name, "Default Assistant");
+  return getDisplayName(name, "ORCHORDS AI Assistant");
 }
 
 export function getModelDisplayName(

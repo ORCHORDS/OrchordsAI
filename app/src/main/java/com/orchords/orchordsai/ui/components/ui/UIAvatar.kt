@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import java.security.MessageDigest
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +98,7 @@ fun UIAvatar(
     value: Avatar,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    useDefaultAssistantBranding: Boolean = false,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -184,10 +187,19 @@ fun UIAvatar(
                     }
 
                     is Avatar.Dummy -> {
-                        ProceduralAvatar(
-                            name = name,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        if (useDefaultAssistantBranding) {
+                            Image(
+                                painter = painterResource(R.drawable.orchords_ai_avatar),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            ProceduralAvatar(
+                                name = name,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }
@@ -357,11 +369,12 @@ private fun ProceduralAvatar(name: String, modifier: Modifier = Modifier) {
 }
 
 private fun vercelAvatarColors(name: String): Pair<Color, Color> {
-    // SHA-1 preserves the original per-user hue mapping. Do not migrate to
-    // SHA-256 without a one-time palette re-derivation: the hue comes from
-    // the sum of digest bytes, so changing the digest silently reshuffles
-    // colors for every existing assistant / conversation.
-    val bytes = MessageDigest.getInstance("SHA-1").digest(name.toByteArray(Charsets.UTF_8))
+    // SHA-256 here (migrated from SHA-1 on 2026-08-31 during security
+    // remediation). The hue comes from the sum of digest bytes, so this
+    // migration is the documented one-time palette re-derivation: avatar
+    // colors reshuffle exactly once for every existing assistant /
+    // conversation and stay stable from this point on.
+    val bytes = MessageDigest.getInstance("SHA-256").digest(name.toByteArray(Charsets.UTF_8))
     val sum = bytes.fold(0) { acc, b -> acc + (b.toInt() and 0xFF) }
     val hue = (sum % 360).toFloat()
     return Pair(

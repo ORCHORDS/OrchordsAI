@@ -1038,6 +1038,7 @@ export const ConversationSidebar = React.memo(
                       size="sm"
                       name={getAssistantDisplayName(currentAssistant.name)}
                       avatar={currentAssistant.avatar}
+                      brand={currentAssistant.name.trim() ? undefined : "default-assistant"}
                     />
                     <span className="truncate">
                       {getAssistantDisplayName(currentAssistant.name)}
@@ -1092,7 +1093,12 @@ export const ConversationSidebar = React.memo(
                           onClick={() => void handleAssistantSelect(assistant.id)}
                           disabled={switchingAssistantId !== null}
                         >
-                          <UIAvatar size="sm" name={displayName} avatar={assistant.avatar} />
+                          <UIAvatar
+                            size="sm"
+                            name={displayName}
+                            avatar={assistant.avatar}
+                            brand={assistant.name.trim() ? undefined : "default-assistant"}
+                          />
                           <span className="min-w-0 flex-1 truncate text-sm">{displayName}</span>
                           {selected && !switching && (
                             <Badge variant="secondary" className="gap-1">

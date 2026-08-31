@@ -14,7 +14,16 @@ pluginManagement {
         maven("https://repo.itextsupport.com/android")
     }
     resolutionStrategy {
+        // CodeQL 2.26.4 cannot instrument Kotlin 2.4.20-RC2 yet. Keep the
+        // patched project toolchain for normal builds, but use the newest
+        // CodeQL-supported Kotlin line only inside CodeQL's ephemeral build.
+        val isCodeQl = System.getenv("CODEQL_ACTION_VERSION") != null
+        val codeQlKotlinVersion = "2.4.10"
+
         eachPlugin {
+            if (isCodeQl && requested.id.id.startsWith("org.jetbrains.kotlin.")) {
+                useVersion(codeQlKotlinVersion)
+            }
             if (requested.id.id == "io.objectbox") {
                 useModule("io.objectbox:objectbox-gradle-plugin:${requested.version}")
             }

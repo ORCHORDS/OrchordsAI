@@ -408,6 +408,7 @@ private fun AssistantItem(
             UIAvatar(
                 name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                 value = assistant.avatar,
+                useDefaultAssistantBranding = assistant.name.isBlank(),
                 modifier = Modifier
                     .size(48.dp)
                     .heroAnimation("assistant_${assistant.id}")
@@ -500,6 +501,7 @@ private fun AssistantActionSheet(
                 UIAvatar(
                     name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                     value = assistant.avatar,
+                    useDefaultAssistantBranding = assistant.name.isBlank(),
                     modifier = Modifier.size(40.dp)
                 )
                 Text(

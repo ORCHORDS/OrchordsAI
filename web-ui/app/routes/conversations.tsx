@@ -27,6 +27,7 @@ import { useFolders } from "~/hooks/use-folders";
 import { useCurrentModel } from "~/hooks/use-current-model";
 import { getAssistantDisplayName, getModelDisplayName } from "~/lib/display";
 import { convertConversationToMarkdown, downloadMarkdown } from "~/lib/export-markdown";
+import { playLoaderSound } from "~/lib/loader-sound";
 import { cn } from "~/lib/utils";
 import api, { sse } from "~/services/api";
 import { useChatInputStore, useAppStore } from "~/stores";
@@ -477,6 +478,8 @@ function useDraftInputController({
 
     const parts = getSubmitParts(draftKey);
     if (parts.length === 0) return;
+
+    playLoaderSound();
 
     if (activeId) {
       await api.post<{ status: string }>(`conversations/${activeId}/messages`, { parts });

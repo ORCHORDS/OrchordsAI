@@ -1,3 +1,4 @@
+import Logo from "~/components/logo";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { resolveFileUrl } from "~/lib/files";
 import type { AssistantAvatar } from "~/types";
@@ -7,6 +8,7 @@ export interface UIAvatarProps {
   avatar?: AssistantAvatar | null;
   size?: "default" | "sm" | "lg";
   className?: string;
+  brand?: "default-assistant";
 }
 
 function getDisplayName(name: string): string {
@@ -36,9 +38,16 @@ function getAvatarImage(avatar?: AssistantAvatar | null): string | null {
   return resolveFileUrl(url);
 }
 
-export function UIAvatar({ name, avatar, size = "default", className }: UIAvatarProps) {
+export function UIAvatar({
+  name,
+  avatar,
+  size = "default",
+  className,
+  brand,
+}: UIAvatarProps) {
   const imageUrl = getAvatarImage(avatar);
   const fallback = getAvatarFallback(name, avatar);
+  const useBrandFallback = brand === "default-assistant" && !imageUrl && !avatar?.content?.trim();
 
   // Radix Avatar keeps image loading state on the root; force remount when source changes.
   const avatarIdentity = `${avatar?.type ?? "dummy"}:${avatar?.url ?? ""}:${avatar?.content ?? ""}:${name}`;
@@ -46,7 +55,9 @@ export function UIAvatar({ name, avatar, size = "default", className }: UIAvatar
   return (
     <Avatar key={avatarIdentity} size={size} className={className}>
       {imageUrl && <AvatarImage src={imageUrl} alt={name} />}
-      <AvatarFallback>{fallback}</AvatarFallback>
+      <AvatarFallback>
+        {useBrandFallback ? <Logo className="size-[68%]" aria-label={name} /> : fallback}
+      </AvatarFallback>
     </Avatar>
   );
 }

@@ -60,9 +60,6 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import com.orchords.ai.core.MessageRole
 import com.orchords.ai.provider.Model
 import com.orchords.ai.ui.UIMessage
@@ -91,7 +88,6 @@ import com.orchords.orchordsai.ui.context.LocalSettings
 import com.orchords.orchordsai.ui.theme.LocalChatFontFamily
 import com.orchords.orchordsai.ui.theme.rememberChatFontFamily
 import com.orchords.orchordsai.ui.theme.extendColors
-import com.orchords.orchordsai.utils.JsonInstant
 import com.orchords.orchordsai.utils.openUrl
 import com.orchords.orchordsai.utils.urlDecode
 import java.util.Locale
@@ -280,27 +276,7 @@ private fun MessagePartsBlock(
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
     val partsState by rememberUpdatedState(parts)
-
-    val handleClickCitation: (String) -> Unit = remember {
-        handler@{ citationId ->
-            partsState.forEach { part ->
-                if (part is UIMessagePart.Tool && part.toolName == "search_web" && part.isExecuted) {
-                    val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                    val items =
-                        runCatching { JsonInstant.parseToJsonElement(outputText).jsonObject["items"]?.jsonArray }.getOrNull()
-                            ?: return@forEach
-                    items.forEach { item ->
-                        val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@forEach
-                        val url = item.jsonObject["url"]?.jsonPrimitive?.content ?: return@forEach
-                        if (citationId == id) {
-                            context.openUrl(url)
-                            return@handler
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val citationTargetsByPartIndex = remember(parts) { buildCitationTargetsByPartIndex(parts) }
     LaunchedEffect(settings.displaySetting) {
         snapshotFlow { partsState }
             .debounce(50.milliseconds)
@@ -362,6 +338,11 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ContentBlock -> key(block.index) {
                 when (val part = block.part) {
                     is UIMessagePart.Text -> {
+                        val citationTargets = citationTargetsByPartIndex[block.index].orEmpty()
+                        val sanitizedText = sanitizeCitationMarkdown(part.text, citationTargets)
+                        val handleClickCitation: (String) -> Unit = { citationId ->
+                            citationTargets[citationId]?.let { context.openUrl(it.url) }
+                        }
                         val textContent = @Composable {
                             if (role == MessageRole.USER) {
                                 Surface(
@@ -372,7 +353,7 @@ private fun MessagePartsBlock(
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         MarkdownBlock(
-                                            content = part.text.replaceRegexes(
+                                            content = sanitizedText.replaceRegexes(
                                                 assistant = assistant,
                                                 scope = AssistantAffectScope.USER,
                                                 visual = true,
@@ -390,7 +371,7 @@ private fun MessagePartsBlock(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             MarkdownBlock(
-                                                content = part.text.replaceRegexes(
+                                                content = sanitizedText.replaceRegexes(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
@@ -401,7 +382,7 @@ private fun MessagePartsBlock(
                                     }
                                 } else {
                                     MarkdownBlock(
-                                        content = part.text.replaceRegexes(
+                                        content = sanitizedText.replaceRegexes(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,

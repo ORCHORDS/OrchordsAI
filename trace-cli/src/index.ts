@@ -5,7 +5,7 @@ import { config as loadEnv } from "dotenv";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTraceConfig, resolveTraceCases } from "./config";
-import { buildProviderRequest, defaultApiKeyEnv, redactRequest } from "./providers";
+import { buildProviderRequest, redactRequest } from "./providers";
 import { recordTrace } from "./recorder";
 
 interface CliOptions {
@@ -38,12 +38,10 @@ async function run(options: CliOptions): Promise<void> {
 
   if (options.dryRun) {
     for (const trace of traces) {
-      const envName = trace.apiKeyEnv ?? defaultApiKeyEnv(trace.provider);
       const request = redactRequest(buildProviderRequest(trace, "<redacted>"));
       console.log(JSON.stringify({
         name: trace.name,
         provider: trace.provider,
-        apiKeyEnv: envName,
         output: trace.outputPath,
         request,
       }, null, 2));
