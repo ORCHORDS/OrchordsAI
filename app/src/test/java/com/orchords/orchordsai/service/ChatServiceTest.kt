@@ -55,6 +55,24 @@ class ChatServiceTest {
     }
 
     @Test
+    fun `generated title guard rejects a title changed after request started`() {
+        val source = Conversation(
+            assistantId = Uuid.random(),
+            title = "",
+            messageNodes = emptyList(),
+        )
+        val latest = source.copy(title = "User renamed this conversation")
+
+        val guard = Class.forName("com.orchords.orchordsai.service.ChatServiceKt")
+            .declaredMethods
+            .firstOrNull { it.name == "shouldApplyGeneratedTitle" }
+        assertTrue("generated-title stale-write guard must exist", guard != null)
+
+        val shouldApply = guard!!.invoke(null, source, latest) as Boolean
+        assertFalse(shouldApply)
+    }
+
+    @Test
     fun `external web search is disabled when assistant preference is disabled`() {
         val assistant = Assistant(enableWebSearch = false)
         val model = Model()
