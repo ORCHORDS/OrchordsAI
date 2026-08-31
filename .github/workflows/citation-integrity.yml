@@ -1,0 +1,40 @@
+name: Citation Integrity Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/java/com/orchords/orchordsai/ui/components/message/CitationScope.kt'
+      - 'app/src/main/java/com/orchords/orchordsai/ui/components/message/ChatMessage.kt'
+      - 'app/src/test/java/com/orchords/orchordsai/ui/components/message/CitationScopeTest.kt'
+      - '.github/workflows/citation-integrity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: citation-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run citation integrity regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.orchords.orchordsai.ui.components.message.CitationScopeTest'
