@@ -2,6 +2,22 @@ plugins {
     `kotlin-dsl`
 }
 
+// Security pins for the transitive dependencies of the Android/Kotlin Gradle
+// plugins used here (AGP's apksig pulls BouncyCastle; the tooling stack pulls
+// jose4j, jdom2 and commons-lang3). This included build has its own
+// configurations, so the root build's subprojects-wide forces do not reach it.
+configurations.all {
+    resolutionStrategy {
+        force(
+            "org.bouncycastle:bcpkix-jdk18on:1.84",
+            "org.bouncycastle:bcprov-jdk18on:1.84",
+            "org.bitbucket.b_c:jose4j:0.9.6",
+            "org.jdom:jdom2:2.0.6.1",
+            "org.apache.commons:commons-lang3:3.18.0",
+        )
+    }
+}
+
 dependencies {
     implementation(libs.android.gradle.plugin)
     implementation(libs.kotlin.compose.gradle.plugin)
