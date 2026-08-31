@@ -13,6 +13,12 @@ import java.time.Instant
 import kotlin.uuid.Uuid
 
 @Serializable
+enum class ConversationLoadState {
+    COMPLETE,
+    PARTIAL,
+}
+
+@Serializable
 data class Conversation(
     val id: Uuid = Uuid.random(),
     val assistantId: Uuid,
@@ -31,6 +37,10 @@ data class Conversation(
     val workspaceCwd: String? = null,
     val folderId: Uuid? = null,
     @Transient
+    val loadState: ConversationLoadState = ConversationLoadState.COMPLETE,
+    @Transient
+    val corruptNodeIds: Set<String> = emptySet(),
+    @Transient
     val newConversation: Boolean = false
 ) {
     val files: List<Uri>
@@ -38,6 +48,9 @@ data class Conversation(
             .flatMap { node -> node.messages.flatMap { it.parts } }
             .collectAllParts()
             .mapNotNull { it.fileUri() }
+
+    val hasIntegrityIssue: Boolean
+        get() = loadState == ConversationLoadState.PARTIAL
 
     /**
      */
@@ -51,7 +64,8 @@ data class Conversation(
     }
 
     fun getMessageNodeByMessageId(messageId: Uuid): MessageNode? {
-        return messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId } }
+        return messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId }
+        }
     }
 
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
