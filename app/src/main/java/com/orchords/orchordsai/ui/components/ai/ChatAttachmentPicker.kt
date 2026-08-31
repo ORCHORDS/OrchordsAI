@@ -83,7 +83,8 @@ internal fun rememberChatAttachmentPickerActions(
     }
     val onTakePicture: () -> Unit = {
         if (cameraPermission.allRequiredPermissionsGranted) {
-            cameraOutputFile = context.cacheDir.resolve("camera_${Uuid.random()}.jpg")
+            val cameraDir = File(context.cacheDir, "camera").apply { mkdirs() }
+            cameraOutputFile = File(cameraDir, "camera_${Uuid.random()}.jpg")
             cameraOutputUri = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", cameraOutputFile!!
             )
