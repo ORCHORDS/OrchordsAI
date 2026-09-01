@@ -21,7 +21,7 @@ class ConversationSessionTest {
 
     @Test
     fun `late predecessor completion cannot clear current generation job`() {
-        val initial = Conversation(assistantId = Uuid.random())
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
         val predecessor = Job()
         val current = Job()
@@ -37,7 +37,7 @@ class ConversationSessionTest {
 
     @Test
     fun `storage hydration cannot replace a locally revised session`() {
-        val initial = Conversation(assistantId = Uuid.random())
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
         val local = initial.copy(title = "newer local")
         val stale = initial.copy(title = "stale storage")
@@ -51,7 +51,7 @@ class ConversationSessionTest {
 
     @Test
     fun `metadata mutation preserves authoritative message state`() {
-        val initial = Conversation(assistantId = Uuid.random())
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
         val authoritative = initial.copy(title = "old", workspaceCwd = "/latest/workspace")
         session.update(authoritative)
@@ -68,7 +68,7 @@ class ConversationSessionTest {
 
     @Test
     fun `first storage hydration establishes persisted baseline`() {
-        val initial = Conversation(assistantId = Uuid.random())
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
         val stored = initial.copy(title = "stored")
 
