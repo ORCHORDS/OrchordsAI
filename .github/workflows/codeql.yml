@@ -24,9 +24,9 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Trusted (post-merge/scheduled) java-kotlin analysis runs on the X79;
+    # Trusted (post-merge/scheduled) java-kotlin analysis runs on the dedicated Linux runner;
     # public/fork PR analysis always stays on GitHub-hosted runners.
-    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'x79' || 'ubuntu-24.04' }}
+    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'ubuntu-24.04-x64' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       security-events: write
@@ -54,7 +54,7 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-          # Keep build outputs on the persistent X79 workspace.
+          # Keep build outputs on the persistent dedicated Linux runner workspace.
           clean: false
 
       - name: Verify material-color-utilities source identity

@@ -46,8 +46,8 @@ jobs:
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
-    # Nightly builds run on the X79 with its persistent Gradle state.
-    runs-on: x79
+    # Nightly builds run on the dedicated Linux runner with its persistent Gradle state.
+    runs-on: ubuntu-24.04-x64
     timeout-minutes: 45
     permissions:
       contents: read

@@ -26,8 +26,8 @@ concurrency:
 
 jobs:
   test:
-    # PRs stay on GitHub-hosted; trusted push events use the X79.
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'x79' }}
+    # PRs stay on GitHub-hosted; trusted push events use the dedicated Linux runner.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
