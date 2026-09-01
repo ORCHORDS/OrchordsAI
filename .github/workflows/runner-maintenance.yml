@@ -1,0 +1,80 @@
+name: Runner Maintenance
+
+# Weekly housekeeping on the dedicated runner. Persistent runners accumulate
+# Gradle cache versions, stale daemon logs, and workspace residue forever;
+# this job prunes them before the disk fills, and doubles as a runner
+# canary + telemetry report (job-hook timings land in ~/runner-telemetry.log).
+on:
+  schedule:
+    - cron: '43 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maintain:
+    runs-on: ubuntu-24.04-x64
+    timeout-minutes: 20
+    steps:
+      - name: Stop Gradle daemons
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /home/orchords/actions-work/OrchordsAI/OrchordsAI 2>/dev/null \
+            && timeout 120 ./gradlew --stop) || true
+          pkill -u orchords -f GradleDaemon || true
+
+      - name: Prune stale Gradle state
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cache entries untouched for 30+ days are dead weight.
+          find /home/orchords/.gradle/caches -type f -atime +30 -delete 2>/dev/null || true
+          find /home/orchords/.gradle/caches -mindepth 1 -type d -empty -delete 2>/dev/null || true
+          # Old wrapper distributions and toolchain tarballs.
+          find /home/orchords/.gradle/wrapper/dists -mindepth 1 -maxdepth 1 -type d -mtime +60 -exec rm -rf {} + 2>/dev/null || true
+          find /home/orchords/.gradle/jdks -name '*.tar.gz' -mtime +7 -delete 2>/dev/null || true
+          find /home/orchords/.gradle/jdks -name '*.lock' -mtime +7 -delete 2>/dev/null || true
+          # Daemon and runner diagnostic logs.
+          find /home/orchords/.gradle/daemon -name '*.log' -mtime +14 -delete 2>/dev/null || true
+          find /home/orchords/runner*/_diag -type f -mtime +14 -delete 2>/dev/null || true
+
+      - name: Sweep orphaned emulator processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only emulators idle for over an hour; a live instrumented job
+          # never matches.
+          for pid in $(pgrep -u orchords -f qemu-system || true); do
+            if [ -d "/proc/$pid" ] && [ "$(($(date +%s) - $(stat -c %Y /proc/$pid)))" -gt 3600 ]; then
+              kill "$pid" 2>/dev/null || true
+            fi
+          done
+
+      - name: Telemetry summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# Runner maintenance report"
+            echo
+            echo "- disk: $(df -h / | awk 'NR==2{print $4}') free of $(df -h / | awk 'NR==2{print $2}')"
+            echo "- gradle home: $(du -sh /home/orchords/.gradle 2>/dev/null | cut -f1)"
+            echo "- workspaces: $(du -sh /home/orchords/actions-work /home/orchords/actions-work2 2>/dev/null | tr '\n' ' ')"
+            echo "- daemons: $(pgrep -u orchords -cf GradleDaemon || echo 0)"
+            echo
+            echo "## Last 15 job timings (runner hooks)"
+            echo '```'
+            tail -15 /home/orchords/runner-telemetry.log 2>/dev/null || echo "(no telemetry yet)"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on low disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          FREE_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+          if [ "$FREE_GB" -lt 10 ]; then
+            echo "::warning::Only ${FREE_GB}G free on the dedicated runner - prune thresholds may need tightening."
+          fi

@@ -12,15 +12,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  nightly:
+    # Single job on the dedicated runner: no job boundaries and no artifact
+    # upload/download round-trips between build, attest and publish.
+    runs-on: ubuntu-24.04-x64
+    timeout-minutes: 45
     permissions:
-      contents: read
-    outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
-      # No checkout needed: query the commits API for activity in the last 24h.
       - name: Check for recent commits
         id: check
         env:
@@ -43,29 +45,23 @@ jobs:
             echo "No commits in the past 24 hours, skipping build"
           fi
 
-  build:
-    needs: check
-    if: needs.check.outputs.should_build == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    outputs:
-      apk_dir: ${{ steps.build_mode.outputs.apk_dir }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: recursive
           persist-credentials: false
+          clean: false
 
       - name: Set up build toolchain
+        if: steps.check.outputs.should_build == 'true'
         uses: ./.github/actions/setup-build
         with:
-          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
+          gradle: false
 
       - name: Select build mode
+        if: steps.check.outputs.should_build == 'true'
         id: build_mode
         env:
           KEY_BASE64: ${{ secrets.KEY_BASE64 }}
@@ -85,7 +81,7 @@ jobs:
           fi
 
       - name: Prepare signing files
-        if: steps.build_mode.outputs.signed == 'true'
+        if: steps.check.outputs.should_build == 'true' && steps.build_mode.outputs.signed == 'true'
         env:
           KEY_BASE64: ${{ secrets.KEY_BASE64 }}
           SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
@@ -94,23 +90,25 @@ jobs:
           set -euo pipefail
           umask 077
           printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
-          printf '%s\n' "$SIGNING_CONFIG" > local.properties
+          printf '%s' "$SIGNING_CONFIG" > local.properties
 
       - name: Gradle Build
+        if: steps.check.outputs.should_build == 'true'
         env:
           GRADLE_TASK: ${{ steps.build_mode.outputs.gradle_task }}
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon "$GRADLE_TASK"
+          ./gradlew "$GRADLE_TASK"
 
       - name: Remove signing files
-        if: always()
+        if: always() && steps.check.outputs.should_build == 'true'
         shell: bash
         run: rm -f app/app.key local.properties
 
       - name: Generate APK checksums
+        if: steps.check.outputs.should_build == 'true'
         env:
           APK_DIR: ${{ steps.build_mode.outputs.apk_dir }}
         shell: bash
@@ -121,6 +119,7 @@ jobs:
           sha256sum --check SHA256SUMS
 
       - name: Stage APK artifact
+        if: steps.check.outputs.should_build == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-apks
@@ -130,53 +129,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  attest:
-    needs: build
-    if: needs.build.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    steps:
-      - name: Download APK artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: nightly-apks
-          path: dist
-
-      - name: Verify APK checksums before attestation
-        working-directory: dist
-        shell: bash
-        run: sha256sum --check SHA256SUMS
-
       - name: Attest APK build provenance
+        if: steps.check.outputs.should_build == 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: 'dist/*.apk'
-
-  publish:
-    needs: attest
-    if: needs.attest.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Download APK artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: nightly-apks
-          path: dist
-
-      - name: Verify staged checksums
-        working-directory: dist
-        shell: bash
-        run: sha256sum --check SHA256SUMS
+          subject-path: 'app/build/outputs/apk/*/*.apk'
 
       - name: Publish nightly prerelease
+        if: steps.check.outputs.should_build == 'true'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: nightly
@@ -189,7 +149,7 @@ jobs:
             Build provenance is published as a GitHub artifact attestation.
             When repository signing secrets are unavailable, the workflow publishes an unsigned debug APK instead of failing.
 
-            > Development build — may be unstable, for testing only.
+            > Development build - may be unstable, for testing only.
           files: |
-            dist/*.apk
-            dist/SHA256SUMS
+            app/build/outputs/apk/*/*.apk
+            app/build/outputs/apk/*/SHA256SUMS

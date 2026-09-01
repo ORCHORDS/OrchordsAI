@@ -26,17 +26,19 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
+          clean: false
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
+          gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Run citation integrity regression tests
