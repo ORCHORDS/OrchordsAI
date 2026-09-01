@@ -17,18 +17,17 @@ jobs:
     runs-on: ubuntu-24.04-x64
     timeout-minutes: 20
     steps:
-      - name: Stop Gradle daemons
+      - name: Stop Gradle daemons and prune shared state
         shell: bash
         run: |
           set -euo pipefail
+          # Both agents share Gradle and tool caches. Serialize host-wide
+          # maintenance so it cannot race another maintenance invocation.
+          exec 9>/home/orchords/.runner-maintenance.lock
+          flock -n 9 || { echo "Another maintenance job is active"; exit 0; }
           (cd /home/orchords/actions-work/OrchordsAI/OrchordsAI 2>/dev/null \
             && timeout 120 ./gradlew --stop) || true
           pkill -u orchords -f GradleDaemon || true
-
-      - name: Prune stale Gradle state
-        shell: bash
-        run: |
-          set -euo pipefail
           # Cache entries untouched for 30+ days are dead weight.
           find /home/orchords/.gradle/caches -type f -atime +30 -delete 2>/dev/null || true
           find /home/orchords/.gradle/caches -mindepth 1 -type d -empty -delete 2>/dev/null || true
@@ -39,6 +38,13 @@ jobs:
           # Daemon and runner diagnostic logs.
           find /home/orchords/.gradle/daemon -name '*.log' -mtime +14 -delete 2>/dev/null || true
           find /home/orchords/runner*/_diag -type f -mtime +14 -delete 2>/dev/null || true
+          # Atomic CodeQL installers use .staging-* directories. A staging
+          # directory older than one day cannot belong to a live installation.
+          exec 8>/home/orchords/actions-toolcache/.codeql-install.lock
+          if flock -n 8; then
+            find /home/orchords/actions-toolcache/CodeQL -maxdepth 2 -type d \
+              -name '.staging-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+          fi
 
       - name: Sweep orphaned emulator processes
         shell: bash

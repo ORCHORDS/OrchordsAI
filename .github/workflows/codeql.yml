@@ -26,7 +26,7 @@ jobs:
     name: Analyze (${{ matrix.language }})
     # Trusted (post-merge/scheduled) java-kotlin analysis runs on the
     # dedicated runner; PR analysis always stays on GitHub-hosted runners.
-    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'ubuntu-24.04-x64' || 'ubuntu-24.04' }}
+    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'codeql-java' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       security-events: write
