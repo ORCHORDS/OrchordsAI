@@ -28,7 +28,7 @@ class CameraShortcutPolicyTest {
         val shortcuts = moduleDir.resolve("src/main/res/xml/shortcuts.xml").readText()
 
         val activityBlock = Regex(
-            "<activity\\s+android:name=\\\"com\\.orchords\\.orchordsai\\.ui\\.activity\\.ShortcutHandlerActivity\\\"[\\s\\S]*?</activity>"
+            "<activity\\s+android:name=\\\"com\\.orchords\\.orchordsai\\.ui\\.activity\\.ShortcutHandlerActivity\\\"[\\s\\S]*?(?:/>|</activity>)"
         ).find(manifest)?.value ?: error("ShortcutHandlerActivity manifest entry missing")
 
         assertTrue(activityBlock.contains("android:exported=\"false\""))

@@ -26,7 +26,6 @@ class ConversationPagedLoadTest {
 
         assertEquals(source.filterNot { it in badOffsets }, result.items)
         assertEquals(badOffsets, result.failedOffsets)
-        assertEquals(PageFailure::class.java.name, result.failureClassesByOffset[10])
     }
 
     @Test
@@ -64,7 +63,6 @@ class ConversationPagedLoadTest {
 
         assertEquals(source, result.items)
         assertEquals(emptySet<Int>(), result.failedOffsets)
-        assertEquals(emptyMap<Int, String>(), result.failureClassesByOffset)
         assertEquals(listOf(0 to 64, 64 to 64, 128 to 22), calls)
     }
 

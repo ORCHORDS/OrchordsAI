@@ -15,7 +15,13 @@ internal fun resolveManagedWebFile(
     managedFile: ManagedFileEntity?,
 ): File? {
     if (managedFile == null || managedFile.relativePath != requestedRelativePath) return null
-    if (requestedRelativePath.startsWith('/') || requestedRelativePath.contains('\u0000')) return null
+    if (requestedRelativePath.contains('\u0000')) return null
+    if (
+        File(requestedRelativePath).isAbsolute ||
+        requestedRelativePath.startsWith('/') ||
+        requestedRelativePath.startsWith("\\\\") ||
+        Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(requestedRelativePath)
+    ) return null
 
     val root = filesDir.canonicalFile
     val target = File(root, managedFile.relativePath).canonicalFile
