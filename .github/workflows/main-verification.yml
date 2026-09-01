@@ -48,9 +48,9 @@ jobs:
 
       - name: Run unit tests and lint
         env:
-          # PRs fail at the first broken test for faster feedback; trusted
-          # push events run the full suite to completion on the warm daemon.
-          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon --fail-fast' || '' }}
+          # Hosted PR jobs use an isolated daemon-free invocation. Gradle
+          # already stops task execution on failure by default.
+          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon' || '' }}
         shell: bash
         run: |
           set -euo pipefail
