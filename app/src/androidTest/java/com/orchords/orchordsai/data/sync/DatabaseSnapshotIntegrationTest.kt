@@ -42,7 +42,7 @@ class DatabaseSnapshotIntegrationTest {
         var database = openDatabase()
         var snapshot: File? = null
         try {
-            database.openHelper.writableDatabase.execSQL("PRAGMA wal_autocheckpoint = 0")
+            disableWalAutoCheckpoint(database)
             val folder = FolderEntity(
                 id = "folder-1",
                 assistantId = "assistant-1",
@@ -78,14 +78,15 @@ class DatabaseSnapshotIntegrationTest {
             assertTrue("fixture must retain committed state in WAL", wal.isFile && wal.length() > 0L)
 
             val service = DatabaseSnapshotService(context, database)
-            snapshot = service.createSnapshot()
-            assertTrue(isValidDatabaseSnapshot(snapshot!!))
+            val createdSnapshot = service.createSnapshot()
+            snapshot = createdSnapshot
+            assertTrue(isValidDatabaseSnapshot(createdSnapshot))
 
             database.messageNodeDao().deleteByConversation(conversation.id)
             database.conversationDao().deleteById(conversation.id)
             database.folderDao().deleteById(folder.id)
 
-            service.restoreSnapshot(snapshot!!)
+            service.restoreSnapshot(createdSnapshot)
             database = openDatabase()
 
             assertEquals(folder, database.folderDao().getFolderById(folder.id))
@@ -104,7 +105,7 @@ class DatabaseSnapshotIntegrationTest {
         val database = openDatabase()
         var snapshot: File? = null
         try {
-            database.openHelper.writableDatabase.execSQL("PRAGMA wal_autocheckpoint = 0")
+            disableWalAutoCheckpoint(database)
             val conversation = ConversationEntity(
                 id = "bulk-conversation",
                 assistantId = "assistant-1",
@@ -141,13 +142,14 @@ class DatabaseSnapshotIntegrationTest {
             val deletedLiveSize = live.length()
             assertTrue("ordinary delete should leave reusable pages in the live DB", deletedLiveSize >= populatedSize / 2)
 
-            snapshot = DatabaseSnapshotService(context, database).createSnapshot()
-            assertTrue(isValidDatabaseSnapshot(snapshot!!))
+            val createdSnapshot = DatabaseSnapshotService(context, database).createSnapshot()
+            snapshot = createdSnapshot
+            assertTrue(isValidDatabaseSnapshot(createdSnapshot))
             assertTrue(
                 "VACUUM snapshot should reclaim at least half of the deleted fixture footprint",
-                snapshot!!.length() * 2 < deletedLiveSize
+                createdSnapshot.length() * 2 < deletedLiveSize
             )
-            val snapshotBytes = snapshot!!.readBytes().toString(Charsets.ISO_8859_1)
+            val snapshotBytes = createdSnapshot.readBytes().toString(Charsets.ISO_8859_1)
             assertFalse("deleted marker must not survive in compact snapshot pages", snapshotBytes.contains(marker))
         } finally {
             database.close()
@@ -190,8 +192,9 @@ class DatabaseSnapshotIntegrationTest {
             assertTrue("schema mismatch must fail restore", failed)
             assertNotNull(database.conversationDao().getConversationById(conversation.id))
 
-            validationSnapshot = DatabaseSnapshotService(context, database).createSnapshot()
-            assertTrue(isValidDatabaseSnapshot(validationSnapshot!!))
+            val createdValidationSnapshot = DatabaseSnapshotService(context, database).createSnapshot()
+            validationSnapshot = createdValidationSnapshot
+            assertTrue(isValidDatabaseSnapshot(createdValidationSnapshot))
         } finally {
             database.close()
             incompatible.delete()
@@ -204,6 +207,14 @@ class DatabaseSnapshotIntegrationTest {
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .allowMainThreadQueries()
             .build()
+
+    private fun disableWalAutoCheckpoint(database: AppDatabase) {
+        database.openHelper.writableDatabase.query("PRAGMA wal_autocheckpoint = 0").use { cursor ->
+            while (cursor.moveToNext()) {
+                // Consume the pragma result so Android executes the query-style PRAGMA.
+            }
+        }
+    }
 
     private fun checkpoint(database: AppDatabase) {
         database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
