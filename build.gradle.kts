@@ -29,21 +29,25 @@ plugins {
 
 val codeqlForceCompile =
     providers.gradleProperty("codeqlForceCompile").map(String::toBoolean).orElse(false)
-val codeqlCompileTasks =
+
+// CodeQL extracts only what actually compiles (compiled-language tracing).
+// Forcing the compiler/KSP tasks of EVERY module keeps warm-run extraction
+// complete: with only app+material3 forced, the other modules stayed
+// UP-TO-DATE and their sources silently dropped out of the database,
+// auto-closing their alerts until the module changed again.
+val codeqlCompileTaskNames =
     setOf(
-        ":app:kspDebugKotlin",
-        ":app:compileDebugKotlin",
-        ":app:compileDebugJavaWithJavac",
-        ":material3:compileDebugKotlin",
-        ":material3:compileDebugJavaWithJavac",
-        ":material3:compileDebugUnitTestKotlin",
-        ":material3:compileDebugUnitTestJavaWithJavac",
+        "kspDebugKotlin",
+        "compileDebugKotlin",
+        "compileDebugJavaWithJavac",
+        "compileDebugUnitTestKotlin",
+        "compileDebugUnitTestJavaWithJavac",
     )
 
 subprojects {
     if (codeqlForceCompile.get()) {
         tasks.configureEach {
-            if (path in codeqlCompileTasks) {
+            if (name in codeqlCompileTaskNames) {
                 outputs.upToDateWhen { false }
                 outputs.doNotCacheIf("CodeQL must observe compiler execution") { true }
             }
