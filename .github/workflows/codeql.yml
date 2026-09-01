@@ -19,7 +19,14 @@ permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  queue: single
+  # PRs: newest analysis replaces the running one for fast feedback. Main and
+  # merge_group: let the in-flight trusted run finish so the required check
+  # reports for that exact SHA and the persistent runner keeps a complete
+  # (not half-cancelled) Gradle workspace for the queued run. Pattern from
+  # ORCHORDS/W.A.S.P ci.yml; queue semantics per GitHub's "Control the
+  # concurrency of workflows and jobs" documentation.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:

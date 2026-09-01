@@ -14,8 +14,10 @@ concurrency:
 jobs:
   nightly:
     # Single job on the dedicated runner: no job boundaries and no artifact
-    # upload/download round-trips between build, attest and publish.
-    runs-on: ubuntu-24.04-x64
+    # upload/download round-trips between build, attest and publish. Pinned to
+    # the verification runner (b2) so nightly APK builds never claim the
+    # CodeQL runner (a1) and evict its warm analysis workspace.
+    runs-on: main-verification
     timeout-minutes: 45
     permissions:
       contents: write

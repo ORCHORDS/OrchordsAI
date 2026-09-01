@@ -22,7 +22,13 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  queue: single
+  # PRs: newest verification replaces the running one for fast feedback.
+  # Main/merge_group: let the in-flight trusted run finish so the required
+  # check reports for that exact SHA and the persistent runner keeps a
+  # complete Gradle workspace for the queued run. Pattern from
+  # ORCHORDS/W.A.S.P ci.yml.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Tests run in a parallel job so a broken push fails fast while the

@@ -24,7 +24,11 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-24.04-x64
+    # Pin to the verification runner (b2) rather than the shared
+    # ubuntu-24.04-x64 label: speculative branch builds must never claim the
+    # CodeQL runner (a1) and switch its persistent workspace away from the
+    # analysis ref, which forces semi-cold rebuilds of the trusted lane.
+    runs-on: main-verification
     timeout-minutes: 30
     steps:
       - name: Checkout repository
