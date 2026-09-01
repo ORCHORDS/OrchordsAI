@@ -1,14 +1,19 @@
 package com.orchords.orchordsai.service
 
 import com.orchords.orchordsai.data.model.Conversation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -174,6 +179,53 @@ class ConversationSessionTest {
         while (!mutatorFinished.get()) Thread.sleep(10)
         assertFalse(mutator.isCancelled)
         assertEquals("structural mutation", session.state.value.title)
+    }
+
+    @Test
+    fun `cancellation flush can reacquire persistence mutex without deadlock`() = runBlocking {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val session = session(initial)
+        val scope = CoroutineScope(Dispatchers.Default)
+        val flushEntered = CompletableDeferred<Unit>()
+        val flushMayProceed = CompletableDeferred<Unit>()
+        val fenceReturned = CompletableDeferred<Unit>()
+
+        val attemptJob = scope.launch {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    flushEntered.complete(Unit)
+                    flushMayProceed.await()
+                    session.persistenceMutex.withLock {
+                        session.update(initial.copy(title = "flushed through persistence mutex"))
+                    }
+                }
+            }
+        }
+        session.setJob(attemptJob)
+
+        val fenceJob = scope.launch {
+            session.awaitInactiveGeneration()
+            fenceReturned.complete(Unit)
+        }
+
+        flushEntered.await()
+        delay(50)
+        flushMayProceed.complete(Unit)
+
+        val completed = withTimeoutOrNull(1_000) {
+            fenceReturned.await()
+            true
+        } ?: false
+
+        if (!completed) {
+            fenceJob.cancelAndJoin()
+        }
+
+        assertTrue("Cancellation flush must not deadlock on persistenceMutex", completed)
+        assertTrue(attemptJob.isCompleted)
+        assertEquals("flushed through persistence mutex", session.state.value.title)
     }
 
     @Test
