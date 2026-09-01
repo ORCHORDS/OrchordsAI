@@ -1,5 +1,6 @@
 name: Gradle Dependency Submission
 
+# Keep workflow_dispatch available for current-head revalidation after CI repairs.
 on:
   push:
     branches: [main]
