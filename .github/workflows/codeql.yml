@@ -19,10 +19,6 @@ on:
         description: 'Pass kotlin.incremental=<value> to the extraction build (A/B experiment)'
         type: boolean
         default: true
-      java_only:
-        description: 'Run only the java-kotlin leg (A/B experiment)'
-        type: boolean
-        default: true
 
 permissions: {}
 
@@ -39,8 +35,6 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # A/B experiment dispatches may skip the non-java legs.
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.java_only != true }}
     # Every leg runs on GitHub-hosted runners. The self-hosted java-kotlin
     # route measured 11m48s vs 7m12s hosted for the same commit (runs
     # 33529475242 / 33529437085): the runner's 2013-era Xeon E5-2690 v2
