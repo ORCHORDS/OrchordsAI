@@ -31,10 +31,8 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
         Query calendar events on the user's device within a time range.
         Specify a custom interval with 'begin'/'end', or use the 'range' preset (today/week/month).
         Returns a list of events with title, description, location, start/end times, and calendar info.
-        The device timezone is '${ZoneId.systemDefault()}' (UTC offset ${OffsetDateTime.now().offset});
-        times without an explicit offset are interpreted in this timezone.
-        Requires the 'Calendar' permission; if it is not granted, an error is returned and the
-        permission request is triggered automatically.
+        ${localToolTimeParsingGuidance()}
+        Requires the 'Calendar' permission; if it is not granted, an error is returned.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -225,10 +223,8 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
     description = """
         Create a new calendar event on the user's device.
         Requires title and start time at minimum. End time defaults to 1 hour after start.
-        The device timezone is '${ZoneId.systemDefault()}' (UTC offset ${OffsetDateTime.now().offset});
-        times without an explicit offset are interpreted in this timezone.
-        Requires the 'Calendar' permission; if it is not granted, an error is returned and the
-        permission request is triggered automatically.
+        ${localToolTimeParsingGuidance()}
+        Requires the 'Calendar' permission; if it is not granted, an error is returned.
     """.trimIndent().replace("\n", " "),
     needsApproval = { true },
     parameters = {
