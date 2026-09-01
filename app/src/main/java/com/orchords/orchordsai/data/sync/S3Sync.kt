@@ -30,6 +30,7 @@ class S3Sync(
     private val json: Json,
     private val context: Context,
     private val httpClient: HttpClient,
+    private val databaseSnapshotService: DatabaseSnapshotService,
 ) {
     private fun getS3Client(config: S3Config): S3Client {
         return S3Client(config, httpClient)
@@ -125,68 +126,65 @@ class S3Sync(
             "Failed to allocate unique S3 backup staging file"
         }
 
-        ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
-            addVirtualFileToZip(
-                zipOut = zipOut,
-                name = "settings.json",
-                content = json.encodeToString(settingsStore.settingsFlow.value)
-            )
+        try {
+            ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
+                addVirtualFileToZip(
+                    zipOut = zipOut,
+                    name = "settings.json",
+                    content = json.encodeToString(settingsStore.settingsFlow.value)
+                )
 
-            if (config.items.contains(S3Config.BackupItem.DATABASE)) {
-                val dbFile = context.getDatabasePath("orchordsai")
-                if (dbFile.exists()) {
-                    addFileToZip(zipOut, dbFile, "orchordsai.db")
+                if (config.items.contains(S3Config.BackupItem.DATABASE)) {
+                    val snapshot = databaseSnapshotService.createSnapshot()
+                    try {
+                        addFileToZip(zipOut, snapshot, DATABASE_BACKUP_ENTRY)
+                    } finally {
+                        snapshot.delete()
+                    }
                 }
 
-                val walFile = File(dbFile.parentFile, "orchordsai-wal")
-                if (walFile.exists()) {
-                    addFileToZip(zipOut, walFile, "orchordsai-wal")
-                }
+                if (config.items.contains(S3Config.BackupItem.FILES)) {
+                    val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
+                    if (uploadFolder.exists() && uploadFolder.isDirectory) {
+                        Log.i(TAG, "prepareBackupFile: Backing up files from ${uploadFolder.absolutePath}")
+                        uploadFolder.listFiles()?.forEach { file ->
+                            if (file.isFile) {
+                                addFileToZip(zipOut, file, "${FileFolders.UPLOAD}/${file.name}")
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "prepareBackupFile: Upload folder does not exist or is not a directory")
+                    }
 
-                val shmFile = File(dbFile.parentFile, "orchordsai-shm")
-                if (shmFile.exists()) {
-                    addFileToZip(zipOut, shmFile, "orchordsai-shm")
+                    val skillsFolder = File(context.filesDir, FileFolders.SKILLS)
+                    if (skillsFolder.exists() && skillsFolder.isDirectory) {
+                        Log.i(TAG, "prepareBackupFile: Backing up skills from ${skillsFolder.absolutePath}")
+                        addDirectoryToZip(
+                            zipOut = zipOut,
+                            rootDir = skillsFolder,
+                            currentDir = skillsFolder,
+                            entryPrefix = "${FileFolders.SKILLS}/"
+                        )
+                    } else {
+                        Log.w(TAG, "prepareBackupFile: Skills folder does not exist or is not a directory")
+                    }
+
+                    val fontsFolder = File(context.filesDir, FileFolders.FONTS)
+                    if (fontsFolder.exists() && fontsFolder.isDirectory) {
+                        Log.i(TAG, "prepareBackupFile: Backing up fonts from ${fontsFolder.absolutePath}")
+                        fontsFolder.listFiles()?.forEach { file ->
+                            if (file.isFile) {
+                                addFileToZip(zipOut, file, "${FileFolders.FONTS}/${file.name}")
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "prepareBackupFile: Fonts folder does not exist or is not a directory")
+                    }
                 }
             }
-
-            if (config.items.contains(S3Config.BackupItem.FILES)) {
-                val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
-                if (uploadFolder.exists() && uploadFolder.isDirectory) {
-                    Log.i(TAG, "prepareBackupFile: Backing up files from ${uploadFolder.absolutePath}")
-                    uploadFolder.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            addFileToZip(zipOut, file, "${FileFolders.UPLOAD}/${file.name}")
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "prepareBackupFile: Upload folder does not exist or is not a directory")
-                }
-
-                val skillsFolder = File(context.filesDir, FileFolders.SKILLS)
-                if (skillsFolder.exists() && skillsFolder.isDirectory) {
-                    Log.i(TAG, "prepareBackupFile: Backing up skills from ${skillsFolder.absolutePath}")
-                    addDirectoryToZip(
-                        zipOut = zipOut,
-                        rootDir = skillsFolder,
-                        currentDir = skillsFolder,
-                        entryPrefix = "${FileFolders.SKILLS}/"
-                    )
-                } else {
-                    Log.w(TAG, "prepareBackupFile: Skills folder does not exist or is not a directory")
-                }
-
-                val fontsFolder = File(context.filesDir, FileFolders.FONTS)
-                if (fontsFolder.exists() && fontsFolder.isDirectory) {
-                    Log.i(TAG, "prepareBackupFile: Backing up fonts from ${fontsFolder.absolutePath}")
-                    fontsFolder.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            addFileToZip(zipOut, file, "${FileFolders.FONTS}/${file.name}")
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "prepareBackupFile: Fonts folder does not exist or is not a directory")
-                }
-            }
+        } catch (error: Throwable) {
+            backupFile.delete()
+            throw error
         }
 
         Log.i(TAG, "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})")
@@ -195,95 +193,108 @@ class S3Sync(
 
     private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config) = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromBackupFile: Starting restore from ${backupFile.absolutePath}")
+        var databaseArchiveFile: File? = null
 
-        ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
-            var entry: ZipEntry?
-            while (zipIn.nextEntry.also { entry = it } != null) {
-                entry?.let { zipEntry ->
-                    Log.i(TAG, "restoreFromBackupFile: Processing entry ${zipEntry.name}")
+        try {
+            ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
+                var entry: ZipEntry?
+                while (zipIn.nextEntry.also { entry = it } != null) {
+                    entry?.let { zipEntry ->
+                        Log.i(TAG, "restoreFromBackupFile: Processing entry ${zipEntry.name}")
 
-                    when (zipEntry.name) {
-                        "settings.json" -> {
-                            val settingsJson = zipIn.readBytes().toString(Charsets.UTF_8)
-                            Log.i(TAG, "restoreFromBackupFile: Restoring settings")
-                            try {
-                                val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
-                                val settings = json.decodeFromString<Settings>(migratedJson)
-                                settingsStore.update(settings)
-                                Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
-                                throw Exception("Failed to restore settings: ${e.message}")
-                            }
-                        }
-
-                        "orchordsai.db", "orchordsai-wal", "orchordsai-shm" -> {
-                            if (config.items.contains(S3Config.BackupItem.DATABASE)) {
-                                val dbFile = when (zipEntry.name) {
-                                    "orchordsai.db" -> context.getDatabasePath("orchordsai")
-                                    "orchordsai-wal" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-wal")
-                                    "orchordsai-shm" -> File(context.getDatabasePath("orchordsai").parentFile, "orchordsai-shm")
-                                    else -> null
-                                }
-
-                                dbFile?.let { targetFile ->
-                                    Log.i(TAG, "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}")
-                                    targetFile.parentFile?.mkdirs()
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        zipIn.copyTo(outputStream)
-                                    }
-                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
+                        when (zipEntry.name) {
+                            "settings.json" -> {
+                                val settingsJson = zipIn.readBytes().toString(Charsets.UTF_8)
+                                Log.i(TAG, "restoreFromBackupFile: Restoring settings")
+                                try {
+                                    val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
+                                    val settings = json.decodeFromString<Settings>(migratedJson)
+                                    settingsStore.update(settings)
+                                    Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
+                                    throw Exception("Failed to restore settings: ${e.message}")
                                 }
                             }
-                        }
 
-                        else -> {
-                            if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.UPLOAD}/")) {
-                                val fileName = zipEntry.name.substringAfter("${FileFolders.UPLOAD}/")
-                                if (fileName.isNotEmpty()) {
-                                    val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
-                                    if (!uploadFolder.exists()) {
-                                        uploadFolder.mkdirs()
-                                        Log.i(TAG, "restoreFromBackupFile: Created upload directory")
+                            DATABASE_BACKUP_ENTRY -> {
+                                if (config.items.contains(S3Config.BackupItem.DATABASE)) {
+                                    check(databaseArchiveFile == null) {
+                                        "Backup contains multiple database snapshots"
                                     }
+                                    databaseArchiveFile = File.createTempFile(
+                                        "orchordsai-db-archive-",
+                                        ".db",
+                                        context.cacheDir,
+                                    ).also { archiveDatabase ->
+                                        FileOutputStream(archiveDatabase).use { outputStream ->
+                                            zipIn.copyTo(outputStream)
+                                            outputStream.fd.sync()
+                                        }
+                                    }
+                                }
+                            }
 
-                                    val targetFile = SafeFilePaths.resolveInside(uploadFolder, fileName)
-                                        ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
-                                    targetFile.parentFile?.mkdirs()
-                                    Log.i(TAG, "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}")
+                            "orchordsai-wal", "orchordsai-shm" -> {
+                                Log.i(TAG, "restoreFromBackupFile: Ignoring legacy SQLite sidecar ${zipEntry.name}")
+                            }
 
-                                    try {
+                            else -> {
+                                if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.UPLOAD}/")) {
+                                    val fileName = zipEntry.name.substringAfter("${FileFolders.UPLOAD}/")
+                                    if (fileName.isNotEmpty()) {
+                                        val uploadFolder = File(context.filesDir, FileFolders.UPLOAD)
+                                        if (!uploadFolder.exists()) {
+                                            uploadFolder.mkdirs()
+                                            Log.i(TAG, "restoreFromBackupFile: Created upload directory")
+                                        }
+
+                                        val targetFile = SafeFilePaths.resolveInside(uploadFolder, fileName)
+                                            ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
+                                        targetFile.parentFile?.mkdirs()
+                                        Log.i(TAG, "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}")
+
+                                        try {
+                                            FileOutputStream(targetFile).use { outputStream ->
+                                                zipIn.copyTo(outputStream)
+                                            }
+                                            Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "restoreFromBackupFile: Failed to restore file ${zipEntry.name}", e)
+                                            throw Exception("Failed to restore file ${zipEntry.name}: ${e.message}")
+                                        }
+                                    }
+                                } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
+                                    restoreSkillEntry(zipIn, zipEntry.name)
+                                } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
+                                    val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
+                                    if (fileName.isNotEmpty()) {
+                                        val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
+                                        val targetFile = SafeFilePaths.resolveDirectChild(fontsFolder, fileName)
+                                            ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
                                         FileOutputStream(targetFile).use { outputStream ->
                                             zipIn.copyTo(outputStream)
                                         }
                                         Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "restoreFromBackupFile: Failed to restore file ${zipEntry.name}", e)
-                                        throw Exception("Failed to restore file ${zipEntry.name}: ${e.message}")
                                     }
+                                } else {
+                                    Log.i(TAG, "restoreFromBackupFile: Skipping entry ${zipEntry.name}")
                                 }
-                            } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.SKILLS}/")) {
-                                restoreSkillEntry(zipIn, zipEntry.name)
-                            } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
-                                val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
-                                if (fileName.isNotEmpty()) {
-                                    val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
-                                    val targetFile = SafeFilePaths.resolveDirectChild(fontsFolder, fileName)
-                                        ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        zipIn.copyTo(outputStream)
-                                    }
-                                    Log.i(TAG, "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)")
-                                }
-                            } else {
-                                Log.i(TAG, "restoreFromBackupFile: Skipping entry ${zipEntry.name}")
                             }
                         }
-                    }
 
-                    zipIn.closeEntry()
+                        zipIn.closeEntry()
+                    }
                 }
             }
+
+            if (config.items.contains(S3Config.BackupItem.DATABASE)) {
+                val archiveDatabase = databaseArchiveFile
+                    ?: error("Backup does not contain a database snapshot")
+                databaseSnapshotService.restoreSnapshot(archiveDatabase)
+            }
+        } finally {
+            databaseArchiveFile?.delete()
         }
 
         Log.i(TAG, "restoreFromBackupFile: Restore completed successfully")
