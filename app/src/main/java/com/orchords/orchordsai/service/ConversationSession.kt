@@ -3,6 +3,7 @@ package com.orchords.orchordsai.service
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,17 +76,16 @@ class ConversationSession(
     }
 
     /**
-     * Cancels any active generation and suspends until its cancellation flush has fully
-     * completed, so a structural mutation (edit/delete/branch select) never races streamed
-     * writes from the previous attempt. Runs under the persistence mutex so checkpoint
-     * writes issued by the dying job are ordered before whatever the caller saves next.
+     * Cancels any active generation and waits for its cancellation/finally cleanup to finish
+     * before allowing a structural mutation to continue. The cancelled generation may itself
+     * need [persistenceMutex] for its final checkpoint, so never hold that mutex while joining
+     * the job. After the job is complete, take and release the mutex once as an ordering barrier
+     * before the caller performs its next durable mutation.
      */
     suspend fun awaitInactiveGeneration() {
         val job = _generationJob.value ?: return
-        job.cancel()
-        persistenceMutex.withLock {
-            job.join()
-        }
+        job.cancelAndJoin()
+        persistenceMutex.withLock { Unit }
     }
 
     private val refCount = AtomicInteger(0)
