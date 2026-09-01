@@ -95,7 +95,17 @@ jobs:
         # Force only compiler/KSP tasks so CodeQL observes real compilation;
         # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
+        run: |
+          # Runner throughput evidence: a1 exposes 20 cpuset CPUs yet compiled
+          # this tree ~2x slower than a 4-vCPU hosted runner (9m24s vs 4m45s),
+          # so the effective CPU quota and load matter more than nproc here.
+          echo "cpu.max: $(cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo n/a)"
+          echo "cpuset: $(cat /sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || echo n/a)"
+          echo "nproc: $(nproc)"
+          grep -m1 'model name' /proc/cpuinfo || true
+          uptime
+          df -h /home "${RUNNER_ROOT:-$HOME}" 2>/dev/null || df -h .
+          ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
