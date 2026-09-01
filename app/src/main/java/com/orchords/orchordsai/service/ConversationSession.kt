@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.orchords.orchordsai.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -71,6 +72,20 @@ class ConversationSession(
     @Synchronized
     fun markPersisted(revision: Long) {
         if (revision > persistedRevision) persistedRevision = revision
+    }
+
+    /**
+     * Cancels any active generation and suspends until its cancellation flush has fully
+     * completed, so a structural mutation (edit/delete/branch select) never races streamed
+     * writes from the previous attempt. Runs under the persistence mutex so checkpoint
+     * writes issued by the dying job are ordered before whatever the caller saves next.
+     */
+    suspend fun awaitInactiveGeneration() {
+        val job = _generationJob.value ?: return
+        job.cancel()
+        persistenceMutex.withLock {
+            job.join()
+        }
     }
 
     private val refCount = AtomicInteger(0)

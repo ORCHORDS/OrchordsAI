@@ -3,7 +3,12 @@ package com.orchords.orchordsai.service
 import com.orchords.orchordsai.data.model.Conversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -123,5 +128,81 @@ class ConversationSessionTest {
         assertEquals(partialSnapshot, recreatedSession.state.value)
         assertTrue(recreatedSession.hydrated)
         assertEquals(0L, recreatedSession.persistedRevision)
+    }
+
+    @Test
+    fun `structural mutation waits for cancellation flush of active generation`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val session = session(initial)
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+
+        val flushEntered = java.util.concurrent.atomic.AtomicBoolean(false)
+        val flushDone = java.util.concurrent.atomic.AtomicBoolean(false)
+        val mutatorFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+        val job = scope.launch {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    flushEntered.set(true)
+                    // The cancellation flush is slow: a structural mutation must not observe
+                    // session state until this block finishes.
+                    while (!flushDone.get()) delay(10)
+                    session.update(initial.copy(title = "flushed by cancelled attempt"))
+                }
+            }
+        }
+        session.setJob(job)
+
+        val mutator = scope.launch {
+            session.awaitInactiveGeneration()
+            // The fence must return only after the cancelled attempt's flush completed.
+            assertTrue(flushEntered.get())
+            assertTrue(flushDone.get())
+            session.update(initial.copy(title = "structural mutation"))
+            mutatorFinished.set(true)
+        }
+
+        // Let the cancelled job reach its finally block, then release the flush while the
+        // mutator is (still) suspended on the fence.
+        while (!flushEntered.get()) Thread.sleep(10)
+        Thread.sleep(100)
+        assertFalse(mutatorFinished.get())
+        assertTrue(job.isCancelled)
+
+        flushDone.set(true)
+        while (!mutatorFinished.get()) Thread.sleep(10)
+        assertFalse(mutator.isCancelled)
+        assertEquals("structural mutation", session.state.value.title)
+    }
+
+    @Test
+    fun `structural mutation after fence cannot be overwritten by late attempt state`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val session = session(initial)
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+
+        val attemptJob = scope.launch {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    session.update(initial.copy(title = "late attempt write"))
+                }
+            }
+        }
+        session.setJob(attemptJob)
+
+        val mutatorFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+        val mutator = scope.launch {
+            session.awaitInactiveGeneration()
+            session.update(initial.copy(title = "structural mutation"))
+            mutatorFinished.set(true)
+        }
+        while (!mutatorFinished.get()) Thread.sleep(10)
+
+        assertEquals("structural mutation", session.state.value.title)
+        val structuralRevision = session.revision
+        assertTrue(session.persistedRevision <= structuralRevision)
     }
 }

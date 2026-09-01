@@ -1142,6 +1142,7 @@ class ChatService(
     ) {
         if (parts.isEmptyInputMessage()) return
 
+        getOrCreateSession(conversationId).awaitInactiveGeneration()
         val currentConversation = getConversationFlow(conversationId).value
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(currentConversation.assistantId)
@@ -1207,6 +1208,7 @@ class ChatService(
         nodeId: Uuid,
         selectIndex: Int
     ) {
+        getOrCreateSession(conversationId).awaitInactiveGeneration()
         val currentConversation = getConversationFlow(conversationId).value
         val targetNode = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw NotFoundException("Message node not found")
@@ -1235,6 +1237,7 @@ class ChatService(
         messageId: Uuid,
         failIfMissing: Boolean = true,
     ) {
+        getOrCreateSession(conversationId).awaitInactiveGeneration()
         val currentConversation = getConversationFlow(conversationId).value
         val updatedConversation = buildConversationAfterMessageDelete(currentConversation, messageId)
 
