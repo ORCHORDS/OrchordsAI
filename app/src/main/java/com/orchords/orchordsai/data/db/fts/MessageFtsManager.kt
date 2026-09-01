@@ -27,6 +27,31 @@ enum class MessageSearchSort(val orderBy: String) {
 
 private const val TAG = "MessageFtsManager"
 
+internal fun messageFtsSearchSql(
+    sort: MessageSearchSort,
+    assistantScoped: Boolean,
+): String {
+    val assistantFilter = if (assistantScoped) {
+        """
+        AND conversation_id IN (
+            SELECT id FROM conversationentity WHERE assistant_id = ?
+        )
+        """.trimIndent()
+    } else {
+        ""
+    }
+
+    return """
+        SELECT node_id, message_id, conversation_id, title, update_at,
+               simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet
+        FROM message_fts
+        WHERE text MATCH jieba_query(?)
+        $assistantFilter
+        ORDER BY ${sort.orderBy}
+        LIMIT 50
+    """.trimIndent()
+}
+
 class MessageFtsManager(private val database: AppDatabase) {
 
     private val db get() = database.openHelper.writableDatabase
@@ -65,18 +90,31 @@ class MessageFtsManager(private val database: AppDatabase) {
     suspend fun search(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
+    ): List<MessageSearchResult> = searchInternal(
+        keyword = keyword,
+        assistantId = null,
+        sort = sort,
+    )
+
+    suspend fun searchForAssistant(
+        keyword: String,
+        assistantId: String,
+        sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
+    ): List<MessageSearchResult> = searchInternal(
+        keyword = keyword,
+        assistantId = assistantId,
+        sort = sort,
+    )
+
+    private suspend fun searchInternal(
+        keyword: String,
+        assistantId: String?,
+        sort: MessageSearchSort,
     ): List<MessageSearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<MessageSearchResult>()
         val cursor = db.query(
-            """
-            SELECT node_id, message_id, conversation_id, title, update_at,
-                   simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet
-            FROM message_fts
-            WHERE text MATCH jieba_query(?)
-            ORDER BY ${sort.orderBy}
-            LIMIT 50
-            """.trimIndent(),
-            arrayOf(keyword)
+            messageFtsSearchSql(sort, assistantScoped = assistantId != null),
+            if (assistantId == null) arrayOf(keyword) else arrayOf(keyword, assistantId),
         )
         Log.i(TAG, messageFtsSearchLogMarker())
         cursor.use {
