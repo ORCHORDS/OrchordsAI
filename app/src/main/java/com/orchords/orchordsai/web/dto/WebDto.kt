@@ -3,13 +3,12 @@ package com.orchords.orchordsai.web.dto
 import kotlinx.serialization.Serializable
 import com.orchords.ai.core.ReasoningLevel
 import com.orchords.ai.core.TokenUsage
+import com.orchords.ai.ui.GenerationTermination
 import com.orchords.ai.ui.UIMessageAnnotation
 import com.orchords.ai.ui.UIMessage
 import com.orchords.ai.ui.UIMessagePart
 import com.orchords.orchordsai.data.model.Conversation
 import com.orchords.orchordsai.data.model.MessageNode
-
-// ========== Request DTOs ==========
 
 @Serializable
 data class SendMessageRequest(
@@ -18,125 +17,32 @@ data class SendMessageRequest(
     val lorebookIds: List<String>? = null,
 )
 
-@Serializable
-data class RegenerateRequest(
-    val messageId: String
-)
-
-@Serializable
-data class ToolApprovalRequest(
-    val toolCallId: String,
-    val approved: Boolean,
-    val reason: String = "",
-    val answer: String? = null,
-)
-
-@Serializable
-data class EditMessageRequest(
-    val parts: List<UIMessagePart>
-)
-
-@Serializable
-data class ForkConversationRequest(
-    val messageId: String
-)
-
-@Serializable
-data class SelectMessageNodeRequest(
-    val selectIndex: Int
-)
-
-@Serializable
-data class MoveConversationRequest(
-    val assistantId: String
-)
-
-@Serializable
-data class UpdateConversationTitleRequest(
-    val title: String
-)
-
-@Serializable
-data class UpdateConversationInjectionsRequest(
-    val modeInjectionIds: List<String>,
-    val lorebookIds: List<String>,
-)
-
-@Serializable
-data class CreateFolderRequest(
-    val name: String
-)
-
-@Serializable
-data class RenameFolderRequest(
-    val name: String
-)
-
-@Serializable
-data class MoveConversationToFolderRequest(
-    val folderId: String? = null
-)
-
-@Serializable
-data class UpdateAssistantRequest(
-    val assistantId: String
-)
-
-@Serializable
-data class UpdateAssistantModelRequest(
-    val assistantId: String,
-    val modelId: String,
-)
-
-@Serializable
-data class UpdateAssistantReasoningLevelRequest(
-    val assistantId: String,
-    val reasoningLevel: ReasoningLevel,
-)
-
-@Serializable
-data class UpdateAssistantMcpServersRequest(
-    val assistantId: String,
-    val mcpServerIds: List<String>,
-)
-
-@Serializable
-data class UpdateAssistantInjectionsRequest(
+@Serializable data class RegenerateRequest(val messageId: String)
+@Serializable data class ToolApprovalRequest(val toolCallId: String, val approved: Boolean, val reason: String = "", val answer: String? = null)
+@Serializable data class EditMessageRequest(val parts: List<UIMessagePart>)
+@Serializable data class ForkConversationRequest(val messageId: String)
+@Serializable data class SelectMessageNodeRequest(val selectIndex: Int)
+@Serializable data class MoveConversationRequest(val assistantId: String)
+@Serializable data class UpdateConversationTitleRequest(val title: String)
+@Serializable data class UpdateConversationInjectionsRequest(val modeInjectionIds: List<String>, val lorebookIds: List<String>)
+@Serializable data class CreateFolderRequest(val name: String)
+@Serializable data class RenameFolderRequest(val name: String)
+@Serializable data class MoveConversationToFolderRequest(val folderId: String? = null)
+@Serializable data class UpdateAssistantRequest(val assistantId: String)
+@Serializable data class UpdateAssistantModelRequest(val assistantId: String, val modelId: String)
+@Serializable data class UpdateAssistantReasoningLevelRequest(val assistantId: String, val reasoningLevel: ReasoningLevel)
+@Serializable data class UpdateAssistantMcpServersRequest(val assistantId: String, val mcpServerIds: List<String>)
+@Serializable data class UpdateAssistantInjectionsRequest(
     val assistantId: String,
     val modeInjectionIds: List<String>,
     val lorebookIds: List<String>,
     val quickMessageIds: List<String> = emptyList(),
 )
-
-@Serializable
-data class UpdateSearchEnabledRequest(
-    val assistantId: String,
-    val enabled: Boolean,
-)
-
-@Serializable
-data class UpdateSearchServiceRequest(
-    val index: Int,
-)
-
-@Serializable
-data class UpdateBuiltInToolRequest(
-    val modelId: String,
-    val tool: String,
-    val enabled: Boolean,
-)
-
-@Serializable
-data class UpdateFavoriteModelsRequest(
-    val modelIds: List<String>,
-)
-
-@Serializable
-data class WebAuthTokenRequest(
-    val password: String,
-)
-
-// ========== Response DTOs ==========
+@Serializable data class UpdateSearchEnabledRequest(val assistantId: String, val enabled: Boolean)
+@Serializable data class UpdateSearchServiceRequest(val index: Int)
+@Serializable data class UpdateBuiltInToolRequest(val modelId: String, val tool: String, val enabled: Boolean)
+@Serializable data class UpdateFavoriteModelsRequest(val modelIds: List<String>)
+@Serializable data class WebAuthTokenRequest(val password: String)
 
 @Serializable
 data class ConversationListDto(
@@ -147,7 +53,7 @@ data class ConversationListDto(
     val folderId: String? = null,
     val createAt: Long,
     val updateAt: Long,
-    val isGenerating: Boolean = false
+    val isGenerating: Boolean = false,
 )
 
 @Serializable
@@ -159,26 +65,9 @@ data class FolderDto(
     val createAt: Long,
 )
 
-@Serializable
-data class PagedResult<T>(
-    val items: List<T>,
-    val nextOffset: Int? = null,
-    val hasMore: Boolean = nextOffset != null
-)
-
-@Serializable
-data class UploadedFileDto(
-    val id: Long,
-    val url: String,
-    val fileName: String,
-    val mime: String,
-    val size: Long
-)
-
-@Serializable
-data class UploadFilesResponseDto(
-    val files: List<UploadedFileDto>
-)
+@Serializable data class PagedResult<T>(val items: List<T>, val nextOffset: Int? = null, val hasMore: Boolean = nextOffset != null)
+@Serializable data class UploadedFileDto(val id: Long, val url: String, val fileName: String, val mime: String, val size: Long)
+@Serializable data class UploadFilesResponseDto(val files: List<UploadedFileDto>)
 
 @Serializable
 data class ConversationDto(
@@ -195,15 +84,10 @@ data class ConversationDto(
     val folderId: String? = null,
     val createAt: Long,
     val updateAt: Long,
-    val isGenerating: Boolean = false
+    val isGenerating: Boolean = false,
 )
 
-@Serializable
-data class MessageNodeDto(
-    val id: String,
-    val messages: List<MessageDto>,
-    val selectIndex: Int
-)
+@Serializable data class MessageNodeDto(val id: String, val messages: List<MessageDto>, val selectIndex: Int)
 
 @Serializable
 data class MessageDto(
@@ -215,16 +99,12 @@ data class MessageDto(
     val finishedAt: String? = null,
     val modelId: String? = null,
     val usage: TokenUsage? = null,
-    val translation: String? = null
+    val translation: String? = null,
+    val termination: GenerationTermination? = null,
 )
 
-@Serializable
-data class ForkConversationResponse(
-    val conversationId: String
-)
-
-@Serializable
-data class MessageSearchResultDto(
+@Serializable data class ForkConversationResponse(val conversationId: String)
+@Serializable data class MessageSearchResultDto(
     val nodeId: String,
     val messageId: String,
     val conversationId: String,
@@ -232,39 +112,16 @@ data class MessageSearchResultDto(
     val updateAt: Long,
     val snippet: String,
 )
-
-@Serializable
-data class WebAuthTokenResponse(
-    val token: String,
-    val expiresAt: Long,
-)
-
-// ========== Error Response ==========
-
-@Serializable
-data class ErrorResponse(
-    val error: String,
-    val code: Int
-)
-
-// ========== SSE Event DTOs ==========
-
-@Serializable
-data class ConversationUpdateEvent(
-    val type: String = "update",
-    val conversation: ConversationDto
-)
-
-@Serializable
-data class ConversationSnapshotEvent(
+@Serializable data class WebAuthTokenResponse(val token: String, val expiresAt: Long)
+@Serializable data class ErrorResponse(val error: String, val code: Int)
+@Serializable data class ConversationUpdateEvent(val type: String = "update", val conversation: ConversationDto)
+@Serializable data class ConversationSnapshotEvent(
     val type: String = "snapshot",
     val seq: Long,
     val conversation: ConversationDto,
-    val serverTime: Long = System.currentTimeMillis()
+    val serverTime: Long = System.currentTimeMillis(),
 )
-
-@Serializable
-data class ConversationNodeUpdateEvent(
+@Serializable data class ConversationNodeUpdateEvent(
     val type: String = "node_update",
     val seq: Long,
     val conversationId: String,
@@ -273,35 +130,12 @@ data class ConversationNodeUpdateEvent(
     val node: MessageNodeDto,
     val updateAt: Long,
     val isGenerating: Boolean,
-    val serverTime: Long = System.currentTimeMillis()
+    val serverTime: Long = System.currentTimeMillis(),
 )
-
-@Serializable
-data class GenerationDoneEvent(
-    val type: String = "done",
-    val conversationId: String
-)
-
-@Serializable
-data class ErrorEvent(
-    val type: String = "error",
-    val message: String
-)
-
-@Serializable
-data class ConversationListInvalidateEvent(
-    val type: String = "invalidate",
-    val assistantId: String,
-    val timestamp: Long
-)
-
-@Serializable
-data class FolderListEvent(
-    val assistantId: String,
-    val folders: List<FolderDto>,
-)
-
-// ========== Conversion Extensions ==========
+@Serializable data class GenerationDoneEvent(val type: String = "done", val conversationId: String)
+@Serializable data class ErrorEvent(val type: String = "error", val message: String)
+@Serializable data class ConversationListInvalidateEvent(val type: String = "invalidate", val assistantId: String, val timestamp: Long)
+@Serializable data class FolderListEvent(val assistantId: String, val folders: List<FolderDto>)
 
 fun Conversation.toListDto(isGenerating: Boolean = false) = ConversationListDto(
     id = id.toString(),
@@ -311,7 +145,7 @@ fun Conversation.toListDto(isGenerating: Boolean = false) = ConversationListDto(
     folderId = folderId?.toString(),
     createAt = createAt.toEpochMilli(),
     updateAt = updateAt.toEpochMilli(),
-    isGenerating = isGenerating
+    isGenerating = isGenerating,
 )
 
 fun com.orchords.orchordsai.data.model.Folder.toDto() = FolderDto(
@@ -336,13 +170,13 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     folderId = folderId?.toString(),
     createAt = createAt.toEpochMilli(),
     updateAt = updateAt.toEpochMilli(),
-    isGenerating = isGenerating
+    isGenerating = isGenerating,
 )
 
 fun MessageNode.toDto() = MessageNodeDto(
     id = id.toString(),
     messages = messages.map { it.toDto() },
-    selectIndex = selectIndex
+    selectIndex = selectIndex,
 )
 
 fun UIMessage.toDto() = MessageDto(
@@ -354,5 +188,6 @@ fun UIMessage.toDto() = MessageDto(
     finishedAt = finishedAt?.toString(),
     modelId = modelId?.toString(),
     usage = usage,
-    translation = translation
+    translation = translation,
+    termination = termination,
 )

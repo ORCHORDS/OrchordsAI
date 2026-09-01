@@ -12,28 +12,12 @@ import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.util.json
 import kotlin.time.Clock
 
-/**
- *
- *
- *
- *
- *
- *
- * ```
- * TextStart(id) -> TextDelta(id, ...) -> TextDelta(id, ...) -> TextEnd(id) -> Finish
- * ```
- *
- *
- */
 class StreamChunkHandler(private val model: Model? = null) {
     private val textPartIndexes = mutableMapOf<String, Int>()
     private val reasoningPartIndexes = mutableMapOf<String, Int>()
     private val imagePartIndexes = mutableMapOf<String, Int>()
     private val serverToolInputBuffers = mutableMapOf<String, StringBuilder>()
 
-    /**
-     *
-     */
     fun handle(messages: List<UIMessage>, chunk: StreamChunk): List<UIMessage> {
         require(messages.isNotEmpty()) { "messages must not be empty" }
 
@@ -63,16 +47,13 @@ class StreamChunkHandler(private val model: Model? = null) {
                 } else {
                     copy(parts = parts.toMutableList().apply {
                         val text = get(index) as UIMessagePart.Text
-                        set(
-                            index, text.copy(
-                                text = text.text + chunk.text,
-                                metadata = chunk.metadata ?: text.metadata,
-                            )
-                        )
+                        set(index, text.copy(
+                            text = text.text + chunk.text,
+                            metadata = chunk.metadata ?: text.metadata,
+                        ))
                     })
                 }
             }
-
             is StreamChunk.TextEnd -> this.also { textPartIndexes.remove(chunk.id) }
             is StreamChunk.ReasoningStart -> {
                 if (chunk.id in reasoningPartIndexes) this
@@ -84,7 +65,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     reasoningType = chunk.reasoningType,
                 )).also { reasoningPartIndexes[chunk.id] = parts.size }
             }
-
             is StreamChunk.ReasoningDelta -> {
                 val index = reasoningPartIndexes[chunk.id]
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Reasoning) {
@@ -106,7 +86,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     })
                 }
             }
-
             is StreamChunk.ReasoningEnd -> {
                 val index = reasoningPartIndexes.remove(chunk.id)
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Reasoning) this
@@ -118,7 +97,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     ))
                 })
             }
-
             is StreamChunk.ToolCallStart -> {
                 if (parts.any { it is UIMessagePart.Tool && it.toolCallId == chunk.id }) this
                 else copy(parts = parts + UIMessagePart.Tool(
@@ -128,7 +106,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     metadata = chunk.metadata,
                 ))
             }
-
             is StreamChunk.ToolCallDelta -> copy(parts = parts.map { part ->
                 if (part is UIMessagePart.Tool && part.toolCallId == chunk.id) {
                     part.copy(
@@ -138,12 +115,9 @@ class StreamChunkHandler(private val model: Model? = null) {
                     )
                 } else part
             })
-
             is StreamChunk.ToolCallEnd -> this
             is StreamChunk.ServerToolStart -> {
-                val index = parts.indexOfFirst {
-                    it is UIMessagePart.ServerTool && it.toolCallId == chunk.id
-                }
+                val index = parts.indexOfFirst { it is UIMessagePart.ServerTool && it.toolCallId == chunk.id }
                 if (index < 0) {
                     copy(parts = parts + UIMessagePart.ServerTool(
                         toolCallId = chunk.id,
@@ -163,7 +137,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     })
                 }
             }
-
             is StreamChunk.ServerToolInputDelta -> {
                 val buffer = serverToolInputBuffers.getOrPut(chunk.id) { StringBuilder() }
                 buffer.append(chunk.inputDelta)
@@ -171,19 +144,15 @@ class StreamChunkHandler(private val model: Model? = null) {
                     tool.copy(metadata = mergeMetadata(tool.metadata, chunk.metadata))
                 }
             }
-
             is StreamChunk.ServerToolInputEnd -> {
                 val input = serverToolInputBuffers.remove(chunk.id)?.toString()?.takeIf { it.isNotBlank() }
                     ?.let(::parseServerToolJson)
                 if (input == null) this else updateServerTool(chunk.id) { it.copy(input = input) }
             }
-
             is StreamChunk.ServerToolEnd -> {
                 val bufferedInput = serverToolInputBuffers.remove(chunk.id)?.toString()?.takeIf { it.isNotBlank() }
                     ?.let(::parseServerToolJson)
-                val index = parts.indexOfFirst {
-                    it is UIMessagePart.ServerTool && it.toolCallId == chunk.id
-                }
+                val index = parts.indexOfFirst { it is UIMessagePart.ServerTool && it.toolCallId == chunk.id }
                 if (index < 0) {
                     copy(parts = parts + UIMessagePart.ServerTool(
                         toolCallId = chunk.id,
@@ -211,7 +180,6 @@ class StreamChunkHandler(private val model: Model? = null) {
                     metadata = chunk.metadata,
                 )).also { imagePartIndexes[chunk.id] = parts.size }
             }
-
             is StreamChunk.ImageDelta -> {
                 val index = imagePartIndexes[chunk.id]
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Image) {
@@ -228,16 +196,13 @@ class StreamChunkHandler(private val model: Model? = null) {
                     })
                 }
             }
-
             is StreamChunk.ImageSnapshot -> {
                 val index = imagePartIndexes[chunk.id]
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Image) {
-                    copy(
-                        parts = parts + UIMessagePart.Image(
-                            url = "data:image/png;base64,${chunk.data}",
-                            metadata = chunk.metadata,
-                        )
-                    ).also { imagePartIndexes[chunk.id] = parts.size }
+                    copy(parts = parts + UIMessagePart.Image(
+                        url = "data:image/png;base64,${chunk.data}",
+                        metadata = chunk.metadata,
+                    )).also { imagePartIndexes[chunk.id] = parts.size }
                 } else {
                     copy(parts = parts.toMutableList().apply {
                         val image = get(index) as UIMessagePart.Image
@@ -250,12 +215,19 @@ class StreamChunkHandler(private val model: Model? = null) {
                     })
                 }
             }
-
             is StreamChunk.ImageEnd -> this.also { imagePartIndexes.remove(chunk.id) }
             is StreamChunk.Annotations -> copy(annotations = (annotations + chunk.annotations).distinct())
             is StreamChunk.Usage -> copy(usage = usage.merge(chunk.usage))
             is StreamChunk.Finish -> copy(
-                finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                termination = mapGenerationTermination(
+                    rawProviderCode = chunk.finishReason,
+                    providerTerminalObserved = chunk.finishReason != null,
+                    responseId = chunk.responseId,
+                    providerModel = chunk.model,
+                    emptyResponse = parts.isEmptyUIMessage(),
+                    missingTerminalCategory = GenerationTerminationCategory.STREAM_INCOMPLETE,
+                ),
             ).finishReasoning().also {
                 textPartIndexes.clear()
                 reasoningPartIndexes.clear()
@@ -288,10 +260,18 @@ fun List<UIMessage>.handleTextGenerationResult(
     model: Model? = null,
 ): List<UIMessage> {
     require(isNotEmpty()) { "messages must not be empty" }
+    val termination = mapGenerationTermination(
+        rawProviderCode = result.finishReason,
+        providerTerminalObserved = result.finishReason != null,
+        responseId = result.id,
+        providerModel = result.model,
+        emptyResponse = result.message.parts.isEmptyUIMessage(),
+    )
     val incoming = result.message.copy(
         modelId = model?.id,
         usage = result.usage,
         finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+        termination = termination,
     ).finishReasoning()
     return if (last().role != incoming.role) {
         this + incoming
@@ -300,6 +280,7 @@ fun List<UIMessage>.handleTextGenerationResult(
             modelId = model?.id ?: last().modelId,
             usage = last().usage.merge(result.usage ?: TokenUsage()),
             finishedAt = incoming.finishedAt,
+            termination = incoming.termination,
         ).finishReasoning()
     }
 }
@@ -308,28 +289,20 @@ private fun UIMessage.appendMessage(delta: UIMessage): UIMessage {
     var newParts = delta.parts.fold(parts) { acc, deltaPart ->
         when (deltaPart) {
             is UIMessagePart.Text -> {
-                if (deltaPart.text.isEmpty()) {
-                    acc
-                } else {
+                if (deltaPart.text.isEmpty()) acc
+                else {
                     val lastPart = acc.lastOrNull()
                     if (lastPart is UIMessagePart.Text) {
                         acc.dropLast(1) + lastPart.copy(text = lastPart.text + deltaPart.text)
-                    } else {
-                        acc + deltaPart
-                    }
+                    } else acc + deltaPart
                 }
             }
-
             is UIMessagePart.Image -> acc + deltaPart
-
             is UIMessagePart.Reasoning -> {
-                if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) {
-                    acc
-                } else {
+                if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) acc
+                else {
                     val lastPart = acc.lastOrNull()
-                    if (lastPart is UIMessagePart.Reasoning &&
-                        lastPart.reasoningType == deltaPart.reasoningType
-                    ) {
+                    if (lastPart is UIMessagePart.Reasoning && lastPart.reasoningType == deltaPart.reasoningType) {
                         acc.dropLast(1) + UIMessagePart.Reasoning(
                             reasoning = lastPart.reasoning + deltaPart.reasoning,
                             createdAt = lastPart.createdAt,
@@ -337,59 +310,42 @@ private fun UIMessage.appendMessage(delta: UIMessage): UIMessage {
                             metadata = deltaPart.metadata ?: lastPart.metadata,
                             reasoningType = lastPart.reasoningType,
                         )
-                    } else {
-                        acc + deltaPart
-                    }
+                    } else acc + deltaPart
                 }
             }
-
             is UIMessagePart.Tool -> {
                 if (deltaPart.toolCallId.isBlank()) {
                     val lastTool = acc.lastOrNull { it is UIMessagePart.Tool } as? UIMessagePart.Tool
-                    if (lastTool != null) {
-                        acc.map { part -> if (part === lastTool) part.merge(deltaPart) else part }
-                    } else {
-                        acc + deltaPart.copy()
-                    }
+                    if (lastTool != null) acc.map { part -> if (part === lastTool) part.merge(deltaPart) else part }
+                    else acc + deltaPart.copy()
                 } else {
                     val existingPart = acc.find {
                         it is UIMessagePart.Tool && it.toolCallId == deltaPart.toolCallId
                     } as? UIMessagePart.Tool
-                    if (existingPart == null) {
-                        acc + deltaPart.copy()
-                    } else {
-                        acc.map { part ->
-                            if (part is UIMessagePart.Tool && part.toolCallId == deltaPart.toolCallId) {
-                                part.merge(deltaPart)
-                            } else {
-                                part
-                            }
-                        }
+                    if (existingPart == null) acc + deltaPart.copy()
+                    else acc.map { part ->
+                        if (part is UIMessagePart.Tool && part.toolCallId == deltaPart.toolCallId) part.merge(deltaPart)
+                        else part
                     }
                 }
             }
-
             is UIMessagePart.ServerTool -> {
                 val existingPart = acc.find {
                     it is UIMessagePart.ServerTool && it.toolCallId == deltaPart.toolCallId
                 } as? UIMessagePart.ServerTool
-                if (existingPart == null) {
-                    acc + deltaPart
-                } else {
-                    acc.map { part ->
-                        if (part is UIMessagePart.ServerTool && part.toolCallId == deltaPart.toolCallId) {
-                            part.copy(
-                                toolName = deltaPart.toolName.ifBlank { part.toolName },
-                                input = deltaPart.input ?: part.input,
-                                output = deltaPart.output ?: part.output,
-                                status = deltaPart.status,
-                                metadata = mergeMetadata(part.metadata, deltaPart.metadata),
-                            )
-                        } else part
-                    }
+                if (existingPart == null) acc + deltaPart
+                else acc.map { part ->
+                    if (part is UIMessagePart.ServerTool && part.toolCallId == deltaPart.toolCallId) {
+                        part.copy(
+                            toolName = deltaPart.toolName.ifBlank { part.toolName },
+                            input = deltaPart.input ?: part.input,
+                            output = deltaPart.output ?: part.output,
+                            status = deltaPart.status,
+                            metadata = mergeMetadata(part.metadata, deltaPart.metadata),
+                        )
+                    } else part
                 }
             }
-
             else -> acc
         }
     }
@@ -400,9 +356,7 @@ private fun UIMessage.appendMessage(delta: UIMessage): UIMessage {
         newParts = newParts.map { part ->
             if (part is UIMessagePart.Reasoning && part.finishedAt == null) {
                 part.copy(finishedAt = Clock.System.now())
-            } else {
-                part
-            }
+            } else part
         }
     }
 

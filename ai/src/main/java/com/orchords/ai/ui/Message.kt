@@ -12,6 +12,99 @@ import kotlin.math.roundToInt
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
+private const val MAX_TERMINATION_PROVIDER_CODE_LENGTH = 128
+private const val MAX_TERMINATION_PROVIDER_ID_LENGTH = 256
+
+@Serializable
+enum class GenerationTerminationCategory {
+    COMPLETED,
+    LENGTH_LIMIT,
+    CONTENT_FILTERED_OR_BLOCKED,
+    TOOL_PROTOCOL_ERROR,
+    PROVIDER_REJECTED,
+    PROVIDER_INTERRUPTED,
+    NETWORK_INTERRUPTED,
+    STREAM_INCOMPLETE,
+    CLIENT_CANCELLED,
+    EMPTY_RESPONSE,
+    UNKNOWN,
+}
+
+@Serializable
+data class GenerationTermination(
+    val category: GenerationTerminationCategory,
+    val rawProviderCode: String? = null,
+    val providerTerminalObserved: Boolean = false,
+    val responseId: String? = null,
+    val providerModel: String? = null,
+)
+
+internal fun mapGenerationTermination(
+    rawProviderCode: String?,
+    providerTerminalObserved: Boolean,
+    responseId: String? = null,
+    providerModel: String? = null,
+    emptyResponse: Boolean = false,
+    missingTerminalCategory: GenerationTerminationCategory = GenerationTerminationCategory.UNKNOWN,
+): GenerationTermination {
+    val rawCode = rawProviderCode.boundedTerminationValue(MAX_TERMINATION_PROVIDER_CODE_LENGTH)
+    val normalized = rawCode?.lowercase()
+    val mapped = when {
+        !providerTerminalObserved -> missingTerminalCategory
+        normalized == null -> GenerationTerminationCategory.UNKNOWN
+        normalized in setOf("stop", "end_turn", "stop_sequence", "tool_calls", "tool_use", "completed") ->
+            GenerationTerminationCategory.COMPLETED
+        normalized in setOf("max_tokens", "length", "max_output_tokens", "model_context_window_exceeded", "context_length_exceeded") ||
+            normalized.startsWith("incomplete:max_output_tokens") ||
+            normalized.startsWith("incomplete:max_tokens") -> GenerationTerminationCategory.LENGTH_LIMIT
+        normalized in setOf(
+            "safety",
+            "recitation",
+            "language",
+            "blocklist",
+            "prohibited_content",
+            "spii",
+            "image_safety",
+            "image_prohibited_content",
+            "no_image",
+            "content_filter",
+            "refusal",
+            "model_armor",
+        ) || normalized.contains("content_filter") -> GenerationTerminationCategory.CONTENT_FILTERED_OR_BLOCKED
+        normalized in setOf(
+            "malformed_function_call",
+            "unexpected_tool_call",
+            "too_many_tool_calls",
+            "missing_thought_signature",
+            "malformed_response",
+        ) -> GenerationTerminationCategory.TOOL_PROTOCOL_ERROR
+        normalized in setOf("failed", "error", "rejected") -> GenerationTerminationCategory.PROVIDER_REJECTED
+        normalized in setOf("pause_turn", "incomplete", "cancelled", "queued", "in_progress") ||
+            normalized.startsWith("incomplete:") -> GenerationTerminationCategory.PROVIDER_INTERRUPTED
+        else -> GenerationTerminationCategory.UNKNOWN
+    }
+    val category = if (mapped == GenerationTerminationCategory.COMPLETED && emptyResponse) {
+        GenerationTerminationCategory.EMPTY_RESPONSE
+    } else {
+        mapped
+    }
+    return GenerationTermination(
+        category = category,
+        rawProviderCode = rawCode,
+        providerTerminalObserved = providerTerminalObserved,
+        responseId = responseId.boundedTerminationValue(MAX_TERMINATION_PROVIDER_ID_LENGTH),
+        providerModel = providerModel.boundedTerminationValue(MAX_TERMINATION_PROVIDER_ID_LENGTH),
+    )
+}
+
+private fun String?.boundedTerminationValue(maxLength: Int): String? = this
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?.replace('\n', ' ')
+    ?.replace('\r', ' ')
+    ?.replace('\t', ' ')
+    ?.take(maxLength)
+
 @Serializable
 data class UIMessage(
     val id: Uuid = Uuid.random(),
@@ -26,6 +119,7 @@ data class UIMessage(
     val translation: String? = null,
     @Transient
     val isSynthetic: Boolean = false,
+    val termination: GenerationTermination? = null,
 ) {
     fun summaryAsText(maxLength: Int = Int.MAX_VALUE): String {
         val text = "[${role.name}]: " + parts.joinToString(separator = "\n") { part ->
@@ -272,7 +366,6 @@ fun UIMessage.finishPendingTools(
 private fun UIMessage.migrateToolParts(): UIMessage {
     val toolCalls = parts.filterIsInstance<UIMessagePart.ToolCall>()
     if (toolCalls.isEmpty()) {
-        // Even if no ToolCall migration needed, ensure parts are sorted
         val sortedParts = parts.toSortedMessageParts()
         return if (sortedParts != parts) copy(parts = sortedParts) else this
     }
@@ -307,11 +400,9 @@ fun List<UIMessage>.migrateToolMessages(): List<UIMessage> {
     while (i < size) {
         val message = this[i]
 
-        // If this is a TOOL role message, merge its results into previous ASSISTANT message
         if (message.role == MessageRole.TOOL) {
             val toolResults = message.parts.filterIsInstance<UIMessagePart.ToolResult>()
             if (result.isNotEmpty() && result.last().role == MessageRole.ASSISTANT) {
-                // Find the last ASSISTANT message and update its Tool parts with results
                 val lastAssistant = result.removeAt(result.lastIndex)
                 val updatedParts = lastAssistant.parts.map { part ->
                     if (part is UIMessagePart.Tool && !part.isExecuted) {
@@ -328,7 +419,6 @@ fun List<UIMessage>.migrateToolMessages(): List<UIMessage> {
                             part
                         }
                     } else if (part is UIMessagePart.ToolCall) {
-                        // Also handle legacy ToolCall parts
                         val matchingResult = toolResults.find { result -> result.toolCallId == part.toolCallId }
                         if (matchingResult != null) {
                             UIMessagePart.Tool(
@@ -359,12 +449,10 @@ fun List<UIMessage>.migrateToolMessages(): List<UIMessage> {
                 }
                 result.add(lastAssistant.copy(parts = updatedParts.toSortedMessageParts()))
             }
-            // Skip the TOOL message (don't add it to result)
             i++
             continue
         }
 
-        // For other messages, migrate their tool parts first
         result.add(message.migrateToolParts())
         i++
     }
@@ -391,24 +479,19 @@ fun <T> List<T>.migrateToolNodes(
     while (i < size) {
         val node = this[i]
         val messages = getMessages(node)
-
-        // Check if this node contains TOOL role messages
         val isToolNode = messages.any { it.role == MessageRole.TOOL }
 
         if (isToolNode && result.isNotEmpty()) {
-            // Find the previous ASSISTANT node
             val lastIndex = result.lastIndex
             val lastNode = result[lastIndex]
             val lastMessages = getMessages(lastNode)
             val isAssistantNode = lastMessages.any { it.role == MessageRole.ASSISTANT }
 
             if (isAssistantNode) {
-                // Collect all ToolResults from the TOOL node
                 val toolResults = messages.flatMap { msg ->
                     msg.parts.filterIsInstance<UIMessagePart.ToolResult>()
                 }
 
-                // Update the ASSISTANT node's messages by merging ToolResults
                 val updatedMessages = lastMessages.map { assistantMsg ->
                     if (assistantMsg.role != MessageRole.ASSISTANT) return@map assistantMsg
 
@@ -463,13 +546,11 @@ fun <T> List<T>.migrateToolNodes(
                 }
 
                 result[lastIndex] = setMessages(lastNode, updatedMessages)
-                // Skip the TOOL node (don't add it to result)
                 i++
                 continue
             }
         }
 
-        // For non-TOOL nodes, migrate their internal tool parts
         val migratedMessages = messages.migrateToolMessages()
         result.add(setMessages(node, migratedMessages))
         i++
