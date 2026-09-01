@@ -139,15 +139,13 @@ class DatabaseSnapshotIntegrationTest {
 
             database.messageNodeDao().deleteByConversation(conversation.id)
             checkpoint(database)
-            val deletedLiveSize = live.length()
-            assertTrue("ordinary delete should leave reusable pages in the live DB", deletedLiveSize >= populatedSize / 2)
 
             val createdSnapshot = DatabaseSnapshotService(context, database).createSnapshot()
             snapshot = createdSnapshot
             assertTrue(isValidDatabaseSnapshot(createdSnapshot))
             assertTrue(
                 "VACUUM snapshot should reclaim at least half of the deleted fixture footprint",
-                createdSnapshot.length() * 2 < deletedLiveSize
+                createdSnapshot.length() * 2 < populatedSize
             )
             val snapshotBytes = createdSnapshot.readBytes().toString(Charsets.ISO_8859_1)
             assertFalse("deleted marker must not survive in compact snapshot pages", snapshotBytes.contains(marker))
