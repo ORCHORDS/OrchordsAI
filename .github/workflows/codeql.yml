@@ -99,9 +99,16 @@ jobs:
         # Force only compiler/KSP tasks so CodeQL observes real compilation;
         # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        # kotlin.build.report prints each compile task's IC on/off state so
-        # the A/B logs prove the kotlin.incremental toggle took effect.
-        run: ./gradlew -PcodeqlForceCompile=true -Pkotlin.incremental=${{ inputs.kotlin_incremental != false && 'true' || 'false' }} -Pkotlin.build.report.output=console :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
+        # kotlin.build.report (file output; "console" is not a valid type)
+        # records each compile task's IC on/off state so the A/B logs prove
+        # the kotlin.incremental toggle took effect.
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc=0
+          ./gradlew -PcodeqlForceCompile=true -Pkotlin.incremental=${{ inputs.kotlin_incremental != false && 'true' || 'false' }} -Pkotlin.build.report.output=file -Pkotlin.build.report.file=kotlin-build-report.txt :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace || rc=$?
+          cat kotlin-build-report.txt 2>/dev/null || true
+          exit $rc
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
