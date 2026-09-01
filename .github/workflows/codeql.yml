@@ -89,8 +89,11 @@ jobs:
 
       - name: Compile and test for extraction
         # Single Gradle invocation: one configuration pass, tasks run in parallel.
+        # --no-build-cache is required: FROM-CACHE task outputs skip real
+        # compilation, and CodeQL manual extraction then sees no sources built
+        # ("this run didn't build any of it", gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
         if: matrix.build
-        run: ./gradlew :material3:compileDebugKotlin :material3:testDebugUnitTest :app:compileDebugKotlin --no-daemon --stacktrace
+        run: ./gradlew :material3:compileDebugKotlin :material3:testDebugUnitTest :app:compileDebugKotlin --no-daemon --stacktrace --no-build-cache
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
