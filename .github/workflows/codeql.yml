@@ -14,6 +14,15 @@ on:
   schedule:
     - cron: '31 3 * * 1'
   workflow_dispatch:
+    inputs:
+      kotlin_incremental:
+        description: 'Pass kotlin.incremental=<value> to the extraction build (A/B experiment)'
+        type: boolean
+        default: true
+      java_only:
+        description: 'Run only the java-kotlin leg (A/B experiment)'
+        type: boolean
+        default: true
 
 permissions: {}
 
@@ -30,6 +39,8 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    # A/B experiment dispatches may skip the non-java legs.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.java_only != true }}
     # Every leg runs on GitHub-hosted runners. The self-hosted java-kotlin
     # route measured 11m48s vs 7m12s hosted for the same commit (runs
     # 33529475242 / 33529437085): the runner's 2013-era Xeon E5-2690 v2
@@ -94,7 +105,9 @@ jobs:
         # Force only compiler/KSP tasks so CodeQL observes real compilation;
         # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
+        # kotlin.build.report prints each compile task's IC on/off state so
+        # the A/B logs prove the kotlin.incremental toggle took effect.
+        run: ./gradlew -PcodeqlForceCompile=true -Pkotlin.incremental=${{ inputs.kotlin_incremental != false && 'true' || 'false' }} -Pkotlin.build.report.output=console :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
