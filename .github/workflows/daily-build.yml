@@ -46,7 +46,8 @@ jobs:
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
-    runs-on: ubuntu-24.04
+    # Nightly builds run on the X79 with its persistent Gradle state.
+    runs-on: x79
     timeout-minutes: 45
     permissions:
       contents: read
@@ -59,10 +60,12 @@ jobs:
           fetch-depth: 0
           submodules: recursive
           persist-credentials: false
+          clean: false
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
+          gradle: false
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Select build mode
@@ -103,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon "$GRADLE_TASK"
+          ./gradlew "$GRADLE_TASK"
 
       - name: Remove signing files
         if: always()

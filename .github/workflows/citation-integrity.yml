@@ -26,17 +26,20 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    # PRs stay on GitHub-hosted; trusted push events use the X79.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'x79' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
+          clean: false
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
+          gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Run citation integrity regression tests
@@ -44,4 +47,5 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.orchords.orchordsai.ui.components.message.CitationScopeTest'
+          GRADLE_FLAGS="${{ github.event_name == 'pull_request' && '--no-daemon' || '' }}"
+          ./gradlew $GRADLE_FLAGS :app:testDebugUnitTest --tests 'com.orchords.orchordsai.ui.components.message.CitationScopeTest'

@@ -24,7 +24,9 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-24.04
+    # Trusted (post-merge/scheduled) java-kotlin analysis runs on the X79;
+    # public/fork PR analysis always stays on GitHub-hosted runners.
+    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'x79' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       security-events: write
@@ -36,18 +38,24 @@ jobs:
         include:
           - language: java-kotlin
             build: true
+            route: trusted
           - language: javascript-typescript
             build: false
+            route: hosted
           - language: actions
             build: false
+            route: hosted
           - language: c-cpp
             build: false
+            route: hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
+          # Keep build outputs on the persistent X79 workspace.
+          clean: false
 
       - name: Verify material-color-utilities source identity
         if: matrix.build
@@ -68,6 +76,7 @@ jobs:
         uses: ./.github/actions/setup-build
         with:
           web: false
+          gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Verify material3 dependency identity
