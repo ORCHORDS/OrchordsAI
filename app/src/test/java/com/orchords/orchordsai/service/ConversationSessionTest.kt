@@ -1,9 +1,9 @@
 package com.orchords.orchordsai.service
 
+import com.orchords.orchordsai.data.model.Conversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import com.orchords.orchordsai.data.model.Conversation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -50,6 +50,22 @@ class ConversationSessionTest {
     }
 
     @Test
+    fun `storage hydration cannot replace an actively generating session`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val session = session(initial)
+        val activeGeneration = Job()
+        val stale = initial.copy(title = "stale storage")
+
+        session.setJob(activeGeneration)
+
+        assertFalse(session.replaceFromStorage(stale))
+        assertEquals(initial, session.state.value)
+        assertFalse(session.hydrated)
+
+        activeGeneration.cancel()
+    }
+
+    @Test
     fun `metadata mutation preserves authoritative message state`() {
         val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
@@ -76,5 +92,36 @@ class ConversationSessionTest {
         assertEquals(stored, session.state.value)
         assertTrue(session.hydrated)
         assertEquals(0L, session.persistedRevision)
+    }
+
+    @Test
+    fun `late checkpoint completion cannot regress persisted revision`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val session = session(initial)
+
+        val firstRevision = session.update(initial.copy(title = "partial"))
+        val finalRevision = session.update(initial.copy(title = "final"))
+
+        session.markPersisted(finalRevision)
+        session.markPersisted(firstRevision)
+
+        assertEquals(finalRevision, session.persistedRevision)
+        assertEquals("final", session.state.value.title)
+    }
+
+    @Test
+    fun `process recreation can hydrate the last persisted partial snapshot`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val liveSession = session(initial)
+        val partialSnapshot = initial.copy(title = "partial checkpoint", workspaceCwd = "/work/in-progress")
+        val persistedRevision = liveSession.update(partialSnapshot)
+        liveSession.markPersisted(persistedRevision)
+
+        val recreatedSession = session(Conversation.ofId(initial.id, initial.assistantId))
+
+        assertTrue(recreatedSession.replaceFromStorage(partialSnapshot))
+        assertEquals(partialSnapshot, recreatedSession.state.value)
+        assertTrue(recreatedSession.hydrated)
+        assertEquals(0L, recreatedSession.persistedRevision)
     }
 }
