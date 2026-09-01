@@ -33,9 +33,10 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
         Returns the total foreground time and a per-app breakdown sorted by usage time (descending).
         The device timezone is '${ZoneId.systemDefault()}' (UTC offset ${OffsetDateTime.now().offset});
         times without an explicit offset are interpreted in this timezone.
-        Requires the 'Usage access' special permission; if it is not granted, the device's usage
-        access settings page is opened automatically and an error is returned.
+        Requires the 'Usage access' special permission. If it is missing, opening the device's
+        Usage access settings requires user approval before this tool continues.
     """.trimIndent().replace("\n", " "),
+    needsApproval = { screenTimeNeedsApproval(context.hasUsageStatsPermission()) },
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
@@ -84,7 +85,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
                 put(
                     "message",
                     "Usage access permission is not granted. The system settings page has been " +
-                        "opened; please ask the user to enable 'Usage access' for this app and try again."
+                        "opened after approval; please enable 'Usage access' for this app and try again."
                 )
             }
             return@Tool listOf(UIMessagePart.Text(payload.toString()))
@@ -166,9 +167,6 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
 
 private const val LOOKBACK_MS = 12L * 60 * 60 * 1000
 
-/**
- *
- */
 @Suppress(
     "DEPRECATION",
     "NewApi"
@@ -223,8 +221,6 @@ private fun computeForegroundTime(
     return foregroundMs
 }
 
-/**
- */
 private fun resolveLauncherPackages(pm: PackageManager): Set<String> {
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
     return runCatching {
@@ -240,8 +236,6 @@ private fun resolveAppName(pm: PackageManager, packageName: String): String {
     }.getOrDefault(packageName)
 }
 
-/**
- */
 private fun parseUsageTime(raw: String, zone: ZoneId): ZonedDateTime {
     val text = raw.trim()
     text.toLongOrNull()?.let { return Instant.ofEpochMilli(it).atZone(zone) }
