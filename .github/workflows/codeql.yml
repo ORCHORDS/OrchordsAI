@@ -21,19 +21,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   queue: single
   # PRs: newest analysis replaces the running one for fast feedback. Main and
-  # merge_group: let the in-flight trusted run finish so the required check
-  # reports for that exact SHA and the persistent runner keeps a complete
-  # (not half-cancelled) Gradle workspace for the queued run. Pattern from
-  # ORCHORDS/W.A.S.P ci.yml; queue semantics per GitHub's "Control the
-  # concurrency of workflows and jobs" documentation.
+  # merge_group: serialize so the required check reports for that exact SHA
+  # and queued runs don't race on the shared Gradle/CodeQL Actions caches.
+  # Pattern from ORCHORDS/W.A.S.P ci.yml; queue semantics per GitHub's
+  # "Control the concurrency of workflows and jobs" documentation.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Trusted (post-merge/scheduled) java-kotlin analysis runs on the
-    # dedicated runner; PR analysis always stays on GitHub-hosted runners.
-    runs-on: ${{ matrix.route == 'trusted' && github.event_name != 'pull_request' && 'codeql-java' || 'ubuntu-24.04' }}
+    # Every leg runs on GitHub-hosted runners. The self-hosted java-kotlin
+    # route measured 11m48s vs 7m12s hosted for the same commit (runs
+    # 33529475242 / 33529437085): the runner's 2013-era Xeon E5-2690 v2
+    # loses more per-core speed than its warm Gradle workspace saves back.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       security-events: write
@@ -45,16 +46,12 @@ jobs:
         include:
           - language: java-kotlin
             build: true
-            route: trusted
           - language: javascript-typescript
             build: false
-            route: hosted
           - language: actions
             build: false
-            route: hosted
           - language: c-cpp
             build: false
-            route: hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,7 +79,9 @@ jobs:
         uses: ./.github/actions/setup-build
         with:
           web: false
-          gradle: ${{ github.event_name == 'pull_request' }}
+          # Hosted runners need Gradle User Home (distribution, dependencies,
+          # build cache) restored from the Actions cache on every event.
+          gradle: true
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Initialize CodeQL
@@ -95,17 +94,7 @@ jobs:
         # Force only compiler/KSP tasks so CodeQL observes real compilation;
         # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        run: |
-          # Runner throughput evidence: a1 exposes 20 cpuset CPUs yet compiled
-          # this tree ~2x slower than a 4-vCPU hosted runner (9m24s vs 4m45s),
-          # so the effective CPU quota and load matter more than nproc here.
-          echo "cpu.max: $(cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo n/a)"
-          echo "cpuset: $(cat /sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || echo n/a)"
-          echo "nproc: $(nproc)"
-          grep -m1 'model name' /proc/cpuinfo || true
-          uptime
-          df -h /home "${RUNNER_ROOT:-$HOME}" 2>/dev/null || df -h .
-          ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
+        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
