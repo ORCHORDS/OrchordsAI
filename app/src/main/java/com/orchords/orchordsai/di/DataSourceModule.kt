@@ -33,6 +33,8 @@ import com.orchords.orchordsai.data.ai.mcp.McpManager
 import com.orchords.orchordsai.data.network.SettingsProxySelector
 import com.orchords.orchordsai.data.network.SettingsProxyAuthenticator
 import com.orchords.orchordsai.data.network.SettingsSocks5Authenticator
+import com.orchords.orchordsai.data.sync.APP_DATABASE_NAME
+import com.orchords.orchordsai.data.sync.DatabaseSnapshotService
 import com.orchords.orchordsai.data.sync.webdav.WebDavSync
 import com.orchords.search.SearchService
 import com.orchords.orchordsai.data.sync.S3Sync
@@ -51,7 +53,7 @@ val dataSourceModule = module {
 
     single {
         val context: Context = get()
-        Room.databaseBuilder(context, AppDatabase::class.java, "orchordsai.db")
+        Room.databaseBuilder(context, AppDatabase::class.java, APP_DATABASE_NAME)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16)
             .addCallback(object : RoomDatabase.Callback() {
@@ -99,6 +101,13 @@ val dataSourceModule = module {
                 }
             )))
             .build()
+    }
+
+    single {
+        DatabaseSnapshotService(
+            context = get(),
+            database = get(),
+        )
     }
 
     single {
@@ -249,7 +258,8 @@ val dataSourceModule = module {
             settingsStore = get(),
             json = get(),
             context = get(),
-            httpClient = get()
+            httpClient = get(),
+            databaseSnapshotService = get(),
         )
     }
 
@@ -273,7 +283,8 @@ val dataSourceModule = module {
             settingsStore = get(),
             json = get(),
             context = get(),
-            httpClient = get()
+            httpClient = get(),
+            databaseSnapshotService = get(),
         )
     }
 }
