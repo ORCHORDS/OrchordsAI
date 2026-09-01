@@ -11,16 +11,11 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: codeql-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
-      # Required to upload the SARIF results.
       security-events: write
       contents: read
       actions: read
@@ -28,14 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Android Gradle build only works under manual build control:
-          # default setup's autobuild cannot build this project (verified:
-          # its Analyze (java-kotlin) job fails), which is what the "Code
-          # scanning configuration error" banner on the Security tab reports.
-          # Compiling the debug Kotlin sources is sufficient for the
-          # java-kotlin extractor and needs neither signing nor packaging.
-          # NOTE: default setup MUST stay disabled — advanced uploads are
-          # rejected while it is enabled (verified 2026-08-31).
           - language: java-kotlin
             build: true
           - language: javascript-typescript

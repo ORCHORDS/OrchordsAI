@@ -16,10 +16,6 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: gradle-dependency-submission-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   submit:
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ import com.orchords.orchordsai.data.model.ConversationLoadState
 internal data class PagedLoadIsolationResult<T>(
     val items: List<T>,
     val failedOffsets: Set<Int>,
+    val failureClassesByOffset: Map<Int, String>,
 )
 
 internal suspend fun <T> loadPagedIsolatingFailures(
@@ -18,6 +19,7 @@ internal suspend fun <T> loadPagedIsolatingFailures(
 
     val items = mutableListOf<T>()
     val failedOffsets = linkedSetOf<Int>()
+    val failureClassesByOffset = linkedMapOf<Int, String>()
 
     suspend fun loadRange(offset: Int, limit: Int) {
         try {
@@ -26,6 +28,7 @@ internal suspend fun <T> loadPagedIsolatingFailures(
             if (!isRecoverablePageFailure(error)) throw error
             if (limit == 1) {
                 failedOffsets += offset
+                failureClassesByOffset[offset] = error::class.java.name
                 return
             }
 
@@ -46,6 +49,7 @@ internal suspend fun <T> loadPagedIsolatingFailures(
     return PagedLoadIsolationResult(
         items = items,
         failedOffsets = failedOffsets,
+        failureClassesByOffset = failureClassesByOffset,
     )
 }
 

@@ -16,10 +16,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: dependency-audit-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   pnpm-audit:
     runs-on: ubuntu-latest
