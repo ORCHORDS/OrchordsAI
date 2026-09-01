@@ -12,4 +12,4 @@ overrides:
   postcss: 8.5.23
   qs: 6.15.2
   valibot: 1.4.2
-  vite: 7.3.5
+  vite: npm:rolldown-vite@7.3.1
