@@ -24,19 +24,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Fork/public PRs stay on GitHub-hosted runners (security boundary).
-  # Trusted events (push, merge_group, schedule, dispatch) use the dedicated Linux runner.
-  # The PR lanes keep --no-daemon + Actions-cache; the dedicated-runner lanes reuse the
-  # warm Gradle daemon and persistent local Gradle User Home instead.
-  IS_PR: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   # Tests run in a parallel job so a broken push fails fast while the
   # assemble job is still packaging. Both jobs share compiled outputs via
   # the build cache (PR) or the persistent workspace (dedicated Linux runner).
   test:
-    runs-on: ${{ env.IS_PR == 'true' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -54,14 +47,14 @@ jobs:
         with:
           # Actions-cache round-trip only pays off on ephemeral runners;
           # the dedicated Linux runner keeps its Gradle User Home on local disk.
-          gradle: ${{ env.IS_PR == 'true' }}
+          gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Run unit tests and lint
         env:
           # PRs fail at the first broken test for faster feedback; trusted
           # push events run the full suite to completion.
-          GRADLE_FLAGS: ${{ env.IS_PR == 'true' && '--no-daemon --fail-fast' || '' }}
+          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon --fail-fast' || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +62,7 @@ jobs:
           ./gradlew $GRADLE_FLAGS :app:testDebugUnitTest :app:lintDebug
 
   assemble:
-    runs-on: ${{ env.IS_PR == 'true' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'ubuntu-24.04-x64' }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -82,12 +75,12 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
-          gradle: ${{ env.IS_PR == 'true' }}
+          gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Assemble debug APK
         env:
-          GRADLE_FLAGS: ${{ env.IS_PR == 'true' && '--no-daemon' || '' }}
+          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon' || '' }}
         shell: bash
         run: |
           set -euo pipefail
