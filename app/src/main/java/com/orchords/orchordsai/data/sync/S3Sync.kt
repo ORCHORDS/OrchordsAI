@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.orchords.orchordsai.data.files.FileFolders
+import com.orchords.orchordsai.data.files.SafeFilePaths
 import com.orchords.orchordsai.data.files.SkillPaths
 import com.orchords.orchordsai.data.datastore.Settings
 import com.orchords.orchordsai.data.datastore.SettingsStore
@@ -246,7 +247,9 @@ class S3Sync(
                                         Log.i(TAG, "restoreFromBackupFile: Created upload directory")
                                     }
 
-                                    val targetFile = File(uploadFolder, fileName)
+                                    val targetFile = SafeFilePaths.resolveInside(uploadFolder, fileName)
+                                        ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
+                                    targetFile.parentFile?.mkdirs()
                                     Log.i(TAG, "restoreFromBackupFile: Restoring file ${zipEntry.name} to ${targetFile.absolutePath}")
 
                                     try {
@@ -263,9 +266,10 @@ class S3Sync(
                                 restoreSkillEntry(zipIn, zipEntry.name)
                             } else if (config.items.contains(S3Config.BackupItem.FILES) && zipEntry.name.startsWith("${FileFolders.FONTS}/")) {
                                 val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
-                                if (fileName.isNotEmpty() && !fileName.contains('/')) {
+                                if (fileName.isNotEmpty()) {
                                     val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
-                                    val targetFile = File(fontsFolder, fileName)
+                                    val targetFile = SafeFilePaths.resolveDirectChild(fontsFolder, fileName)
+                                        ?: throw IllegalArgumentException("Unsafe backup entry: ${zipEntry.name}")
                                     FileOutputStream(targetFile).use { outputStream ->
                                         zipIn.copyTo(outputStream)
                                     }

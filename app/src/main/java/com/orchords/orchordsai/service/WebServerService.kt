@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.orchords.orchordsai.OrchordsAiActivity
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.WEB_SERVER_NOTIFICATION_CHANNEL_ID
 import com.orchords.orchordsai.data.datastore.SettingsStore
@@ -140,7 +141,7 @@ class WebServerService : Service() {
     private fun buildLaunchPendingIntent() = PendingIntent.getActivity(
         this,
         0,
-        packageManager.getLaunchIntentForPackage(packageName),
+        Intent(this, OrchordsAiActivity::class.java),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
