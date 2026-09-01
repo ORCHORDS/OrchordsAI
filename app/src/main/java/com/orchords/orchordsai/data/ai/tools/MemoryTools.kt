@@ -14,8 +14,6 @@ import com.orchords.ai.core.InputSchema
 import com.orchords.ai.core.Tool
 import com.orchords.ai.ui.UIMessagePart
 import com.orchords.orchordsai.data.model.AssistantMemory
-import com.orchords.orchordsai.utils.toLocalString
-import java.time.LocalDate
 
 fun buildMemoryTools(
     json: Json,
@@ -35,7 +33,6 @@ fun buildMemoryTools(
             Do not store sensitive information (e.g., ethnicity, religion, sexual orientation, political views, sex life, criminal records).
             You may store: preferred name, preferences, plans, work-related notes, chat style preferences, first chat time, etc.
             Do not show memory content directly in the conversation unless the user explicitly asks.
-            Today is ${LocalDate.now().toLocalString(true)}.
             Similar memories should be merged; prefer updating existing records.
 
             Examples:
