@@ -66,7 +66,7 @@ fun createConversationTools(
     Tool(
         name = "conversation_search",
         description = """
-            Full-text search across the user's past conversations to recall specific information they mentioned before.
+            Full-text search across your past conversations with this assistant to recall specific information.
             Use focused keywords. Run multiple searches with different keywords if needed.
             Each result includes the conversation title, a snippet with matched keywords wrapped in [brackets], and the date.
         """.trimIndent(),
@@ -75,7 +75,7 @@ fun createConversationTools(
                 properties = buildJsonObject {
                     put("query", buildJsonObject {
                         put("type", "string")
-                        put("description", "Keywords to search for in past conversation messages")
+                        put("description", "Keywords to search for in this assistant's past conversation messages")
                     })
                     put("limit", buildJsonObject {
                         put("type", "integer")
@@ -93,7 +93,11 @@ fun createConversationTools(
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
             val results = conversationRepo
-                .searchMessages(query, MessageSearchSort.RELEVANCE)
+                .searchMessagesOfAssistant(
+                    assistantId = assistantId,
+                    keyword = query,
+                    sort = MessageSearchSort.RELEVANCE,
+                )
                 .take(limit)
             val payload = buildJsonArray {
                 results.forEach { result ->
