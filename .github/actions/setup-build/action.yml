@@ -10,6 +10,10 @@ inputs:
     description: Whether to set up pnpm/Node and install web-ui dependencies.
     type: boolean
     default: true
+  cache-encryption-key:
+    description: Base64 AES key; enables cross-runner configuration-cache reuse.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -18,13 +22,19 @@ runs:
       uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
       with:
         distribution: temurin
-        java-version: '17'
+        # Gradle runtime only; compilation still targets Java 17 via
+        # compileOptions/jvmTarget in the build scripts.
+        java-version: '21'
 
     - name: Set up Gradle
       # Caches Gradle User Home: distribution, resolved dependencies, toolchain
-      # JDKs, and build-cache entries (org.gradle.caching=true).
+      # JDKs, and build-cache entries (org.gradle.caching=true). The
+      # encryption key additionally persists configuration-cache entries,
+      # which embed absolute paths and potential credentials.
       if: ${{ inputs.gradle }}
       uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      with:
+        cache-encryption-key: ${{ inputs.cache-encryption-key }}
 
     - name: Set up pnpm
       if: ${{ inputs.web }}

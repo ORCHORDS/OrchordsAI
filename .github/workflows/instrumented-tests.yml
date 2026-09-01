@@ -44,6 +44,8 @@ jobs:
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Cache emulator system image
         # Cache SDK downloads (dependencies), never AVD state (mutable).

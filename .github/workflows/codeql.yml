@@ -68,6 +68,7 @@ jobs:
         uses: ./.github/actions/setup-build
         with:
           web: false
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Verify material3 dependency identity
         if: matrix.build

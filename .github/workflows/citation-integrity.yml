@@ -36,6 +36,8 @@ jobs:
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Run citation integrity regression tests
         shell: bash
