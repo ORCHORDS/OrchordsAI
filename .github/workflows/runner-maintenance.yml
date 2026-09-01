@@ -40,10 +40,13 @@ jobs:
           find /home/orchords/runner*/_diag -type f -mtime +14 -delete 2>/dev/null || true
           # Atomic CodeQL installers use .staging-* directories. A staging
           # directory older than one day cannot belong to a live installation.
-          exec 8>/home/orchords/actions-toolcache/.codeql-install.lock
-          if flock -n 8; then
-            find /home/orchords/actions-toolcache/CodeQL -maxdepth 2 -type d \
-              -name '.staging-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+          if exec 8>/home/orchords/actions-toolcache/.codeql-install.lock; then
+            if flock -n 8; then
+              find /home/orchords/actions-toolcache/CodeQL -maxdepth 2 -type d \
+                -name '.staging-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+            fi
+          else
+            echo "::warning::CodeQL install lock is not writable; skipping staging cleanup"
           fi
 
       - name: Sweep orphaned emulator processes
