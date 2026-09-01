@@ -88,7 +88,7 @@ jobs:
         # Force only compiler/KSP tasks so CodeQL observes real compilation;
         # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
+        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
