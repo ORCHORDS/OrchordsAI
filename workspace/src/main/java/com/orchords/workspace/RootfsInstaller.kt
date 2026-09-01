@@ -108,6 +108,8 @@ class RootfsInstaller(
             var entries = 0
             var pendingName: String? = null
             var pendingLinkName: String? = null
+            val pendingHardLinks = mutableListOf<PendingHardLink>()
+
             while (true) {
                 checkInterrupted()
                 val rawHeader = input.readTarHeader() ?: break
@@ -138,19 +140,23 @@ class RootfsInstaller(
                     input.skipFully(header.size.paddingSize())
                     continue
                 }
+
                 val target = targetDir.safeResolve(header.name)
                 target.parentFile?.mkdirs()
                 when (header.type) {
                     TarEntryType.DIRECTORY -> target.mkdirs()
                     TarEntryType.SYMLINK -> createSymlink(targetDir, target, header.linkName)
-                    TarEntryType.HARDLINK -> createHardLink(targetDir, target, header.linkName)
+                    TarEntryType.HARDLINK -> {
+                        if (!tryCreateHardLink(targetDir, target, header.linkName)) {
+                            pendingHardLinks += PendingHardLink(target, header.linkName)
+                        }
+                    }
                     TarEntryType.FILE -> {
                         target.outputStream().use { output ->
                             input.copyExactly(output, header.size)
                         }
                         target.applyMode(header.mode)
                     }
-
                     TarEntryType.LONG_NAME,
                     TarEntryType.LONG_LINK,
                     TarEntryType.PAX,
@@ -160,7 +166,10 @@ class RootfsInstaller(
                     input.skipFully(header.size)
                 }
                 input.skipFully(header.size.paddingSize())
-                if (header.modTime > 0 && header.type != TarEntryType.SYMLINK) {
+                if (header.modTime > 0 &&
+                    header.type != TarEntryType.SYMLINK &&
+                    header.type != TarEntryType.HARDLINK
+                ) {
                     target.setLastModified(header.modTime * 1000)
                 }
                 entries++
@@ -172,6 +181,8 @@ class RootfsInstaller(
                     )
                 )
             }
+
+            resolvePendingHardLinks(targetDir, pendingHardLinks)
         }
     }
 
@@ -191,25 +202,41 @@ class RootfsInstaller(
         Files.createSymbolicLink(target.toPath(), linkTarget.toPath())
     }
 
-    private fun createHardLink(root: File, target: File, linkName: String) {
-        if (linkName.isBlank()) return
+    private fun tryCreateHardLink(root: File, target: File, linkName: String): Boolean {
+        require(linkName.isNotBlank()) { "Hardlink target is blank: ${target.name}" }
         val source = root.safeResolve(linkName)
-        if (!source.exists()) return
+        if (!source.exists()) return false
         target.delete()
-        runCatching {
+        try {
             Files.createLink(target.toPath(), source.toPath())
-        }.recoverCatching { error ->
-            if (error !is IOException &&
-                error !is UnsupportedOperationException &&
-                error !is SecurityException
-            ) {
-                throw error
+        } catch (error: IOException) {
+            throw IOException("Rootfs filesystem cannot preserve TAR hardlink semantics", error)
+        } catch (error: UnsupportedOperationException) {
+            throw IOException("Rootfs filesystem does not support TAR hardlinks", error)
+        } catch (error: SecurityException) {
+            throw IOException("Rootfs hardlink creation was denied", error)
+        }
+        return true
+    }
+
+    private fun resolvePendingHardLinks(root: File, links: List<PendingHardLink>) {
+        var unresolved = links.toMutableList()
+        while (unresolved.isNotEmpty()) {
+            checkInterrupted()
+            val next = mutableListOf<PendingHardLink>()
+            var resolvedAny = false
+            unresolved.forEach { link ->
+                if (tryCreateHardLink(root, link.target, link.linkName)) {
+                    resolvedAny = true
+                } else {
+                    next += link
+                }
             }
-            source.copyTo(target, overwrite = true)
-            target.setReadable(source.canRead(), false)
-            target.setWritable(source.canWrite(), true)
-            target.setExecutable(source.canExecute(), false)
-        }.getOrThrow()
+            require(resolvedAny || next.isEmpty()) {
+                "Rootfs archive contains unresolved hardlink targets"
+            }
+            unresolved = next
+        }
     }
 
     private fun InputStream.readTarHeader(): TarHeader? {
@@ -221,9 +248,7 @@ class RootfsInstaller(
 
         val name = header.string(0, 100)
         val prefix = header.string(345, 155)
-        val fullName = listOf(prefix, name)
-            .filter { it.isNotBlank() }
-            .joinToString("/")
+        val fullName = listOf(prefix, name).filter { it.isNotBlank() }.joinToString("/")
         return TarHeader(
             name = normalizeTarPath(fullName),
             mode = header.octal(100, 8).toInt(),
@@ -253,18 +278,14 @@ class RootfsInstaller(
             val end = (index + length).coerceAtMost(text.length)
             val record = text.substring(space + 1, end).trimEnd('\n')
             val equals = record.indexOf('=')
-            if (equals > 0) {
-                result[record.substring(0, equals)] = record.substring(equals + 1)
-            }
+            if (equals > 0) result[record.substring(0, equals)] = record.substring(equals + 1)
             index += length
         }
         return result
     }
 
     private fun checkInterrupted() {
-        if (Thread.currentThread().isInterrupted) {
-            throw InterruptedException("Rootfs install cancelled")
-        }
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Rootfs install cancelled")
     }
 
     private fun InputStream.copyExactly(output: java.io.OutputStream, bytes: Long) {
@@ -292,13 +313,9 @@ class RootfsInstaller(
         while (remaining > 0) {
             checkInterrupted()
             val skipped = skip(remaining)
-            if (skipped > 0) {
-                remaining -= skipped
-            } else if (read() >= 0) {
-                remaining--
-            } else {
-                throw EOFException("Unexpected EOF while skipping tar data")
-            }
+            if (skipped > 0) remaining -= skipped
+            else if (read() >= 0) remaining--
+            else throw EOFException("Unexpected EOF while skipping tar data")
         }
     }
 
@@ -329,11 +346,7 @@ class RootfsInstaller(
     }
 
     private fun normalizeTarPath(path: String): String {
-        val normalized = path
-            .replace('\\', '/')
-            .trim()
-            .trimStart('/')
-            .removePrefix("./")
+        val normalized = path.replace('\\', '/').trim().trimStart('/').removePrefix("./")
         require(normalized.isNotBlank()) { "Rootfs entry path is blank" }
         require(!normalized.contains('\u0000')) { "Rootfs entry path contains invalid character" }
         require(normalized.split('/').none { it == ".." }) { "Rootfs entry escapes target directory: $path" }
@@ -341,17 +354,12 @@ class RootfsInstaller(
     }
 
     private fun ByteArray.string(offset: Int, length: Int): String {
-        val end = (offset until offset + length)
-            .firstOrNull { this[it] == 0.toByte() }
-            ?: (offset + length)
+        val end = (offset until offset + length).firstOrNull { this[it] == 0.toByte() } ?: (offset + length)
         return copyOfRange(offset, end).toString(Charsets.UTF_8).trim()
     }
 
     private fun ByteArray.octal(offset: Int, length: Int): Long {
-        val value = string(offset, length)
-            .trim()
-            .lowercase(Locale.US)
-            .trimEnd('\u0000')
+        val value = string(offset, length).trim().lowercase(Locale.US).trimEnd('\u0000')
         return if (value.isBlank()) 0L else value.toLong(8)
     }
 
@@ -360,6 +368,8 @@ class RootfsInstaller(
     }
 
     private fun Long.paddedTarSize(): Long = this + paddingSize()
+
+    private data class PendingHardLink(val target: File, val linkName: String)
 
     private data class TarHeader(
         val name: String,
@@ -371,14 +381,7 @@ class RootfsInstaller(
     )
 
     private enum class TarEntryType {
-        FILE,
-        DIRECTORY,
-        SYMLINK,
-        HARDLINK,
-        LONG_NAME,
-        LONG_LINK,
-        PAX,
-        OTHER,
+        FILE, DIRECTORY, SYMLINK, HARDLINK, LONG_NAME, LONG_LINK, PAX, OTHER,
     }
 
     enum class ArchiveFormat(val extension: String) {
