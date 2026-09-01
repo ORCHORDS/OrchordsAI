@@ -323,6 +323,12 @@ class ConversationRepository(
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
     ) = messageFtsManager.search(keyword, sort)
 
+    suspend fun searchMessagesOfAssistant(
+        assistantId: Uuid,
+        keyword: String,
+        sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
+    ) = messageFtsManager.searchForAssistant(keyword, assistantId.toString(), sort)
+
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         messageFtsManager.deleteAll()
         val allIds = conversationDAO.getAllIds()
@@ -399,8 +405,6 @@ class ConversationRepository(
         )
     }
 
-    /**
-     */
     suspend fun updateConversationFolderId(conversationId: Uuid, folderId: Uuid?) {
         conversationDAO.updateFolderId(
             id = conversationId.toString(),
@@ -476,8 +480,6 @@ class ConversationRepository(
     }
 }
 
-/**
- */
 data class LightConversationEntity(
     val id: String,
     val assistantId: String,
