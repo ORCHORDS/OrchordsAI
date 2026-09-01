@@ -31,8 +31,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
         Get the user's app screen usage (screen time) over a time range.
         Specify a custom interval with 'begin'/'end', or use the 'range' preset (today/week).
         Returns the total foreground time and a per-app breakdown sorted by usage time (descending).
-        The device timezone is '${ZoneId.systemDefault()}' (UTC offset ${OffsetDateTime.now().offset});
-        times without an explicit offset are interpreted in this timezone.
+        ${localToolTimeParsingGuidance()}
         Requires the 'Usage access' special permission. If it is missing, opening the device's
         Usage access settings requires user approval before this tool continues.
     """.trimIndent().replace("\n", " "),
