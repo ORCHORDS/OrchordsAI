@@ -9,6 +9,10 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
   merge_group:
     branches: [main]
   workflow_dispatch:
@@ -55,7 +59,9 @@ jobs:
 
       - name: Run unit tests and lint
         env:
-          GRADLE_FLAGS: ${{ env.IS_PR == 'true' && '--no-daemon' || '' }}
+          # PRs fail at the first broken test for faster feedback; trusted
+          # push events run the full suite to completion.
+          GRADLE_FLAGS: ${{ env.IS_PR == 'true' && '--no-daemon --fail-fast' || '' }}
         shell: bash
         run: |
           set -euo pipefail
