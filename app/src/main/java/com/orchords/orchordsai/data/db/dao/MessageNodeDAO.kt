@@ -34,6 +34,9 @@ interface MessageNodeDAO {
     )
     suspend fun getNodeIdAtOffset(conversationId: String, offset: Int): String?
 
+    @Query("SELECT * FROM message_node WHERE id = :nodeId LIMIT 1")
+    suspend fun getNodeById(nodeId: String): MessageNodeEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(nodes: List<MessageNodeEntity>)
 
@@ -68,11 +71,6 @@ data class MessageTokenStats(
 
 data class MessageDayCount(val day: String, val count: Int)
 
-/**
- * Always hand json_each valid JSON. Filtering with a WHERE json_valid(...) predicate is not enough:
- * SQLite is free to evaluate the table-valued json_each function before the WHERE clause and a
- * malformed persisted row would still abort the whole statistics query.
- */
 private const val SAFE_MESSAGES_JSON =
     "CASE WHEN json_valid(mn.messages) THEN mn.messages ELSE '[]' END"
 
