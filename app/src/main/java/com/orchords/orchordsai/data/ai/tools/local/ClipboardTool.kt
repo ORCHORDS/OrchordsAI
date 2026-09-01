@@ -21,6 +21,7 @@ internal fun buildClipboardTool(context: Context): Tool = Tool(
         Use action: read or write. For write, provide text.
         Do NOT write to the clipboard unless the user has explicitly requested it.
     """.trimIndent().replace("\n", " "),
+    needsApproval = { args -> clipboardNeedsApproval(args) },
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
