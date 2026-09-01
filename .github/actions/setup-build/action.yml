@@ -31,7 +31,7 @@ runs:
       # JDKs, and build-cache entries (org.gradle.caching=true). The
       # encryption key additionally persists configuration-cache entries,
       # which embed absolute paths and potential credentials.
-      if: ${{ inputs.gradle }}
+      if: inputs.gradle == 'true'
       uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       with:
         cache-encryption-key: ${{ inputs.cache-encryption-key }}
@@ -41,20 +41,30 @@ runs:
       # ~/setup-pnpm, which two concurrent agents sharing $HOME race on
       # (ENOTEMPTY during cold start). npm is preinstalled on hosted images
       # and the dedicated runner has pnpm globally already.
-      if: ${{ inputs.web }}
+      if: inputs.web == 'true'
       shell: bash
       run: command -v pnpm >/dev/null 2>&1 || sudo npm install -g pnpm@11
 
-    - name: Set up Node
-      if: ${{ inputs.web }}
+    - name: Set up Node (hosted)
+      if: inputs.web == 'true' && inputs.gradle == 'true'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: 22
         cache: pnpm
         cache-dependency-path: web-ui/pnpm-lock.yaml
 
+    - name: Verify Node (dedicated runner)
+      # The dedicated runner keeps Node/pnpm preinstalled; setup-node's
+      # Actions-cache post step fails there because the pnpm store path
+      # does not match, so this lane only checks the versions.
+      if: inputs.web == 'true' && inputs.gradle != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        node -v | grep -q '^v22' || { echo "::error::Node 22 required on the dedicated runner"; exit 1; }
+
     - name: Install web-ui dependencies
-      if: ${{ inputs.web }}
+      if: inputs.web == 'true'
       shell: bash
       working-directory: web-ui
       run: pnpm install --frozen-lockfile
