@@ -1,9 +1,17 @@
 name: Instrumented Tests
 
 # Instrumented tests (androidTest) on a Gradle Managed Device using the
-# ATD system image. Nightly lane only: it adds ~15-25 min and must not sit
-# on the per-push critical path.
+# ATD system image. Keep the normal cadence off the per-push path, but run
+# immediately when database/backup integration tests or their boundary code
+# changes so data-integrity fixes get exact-commit evidence before closure.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/androidTest/**'
+      - 'app/src/main/java/com/orchords/orchordsai/data/sync/DatabaseSnapshotService.kt'
+      - 'app/src/main/java/com/orchords/orchordsai/data/db/AppDatabase.kt'
+      - '.github/workflows/instrumented-tests.yml'
   schedule:
     - cron: '37 4 * * 2,5'
   workflow_dispatch:

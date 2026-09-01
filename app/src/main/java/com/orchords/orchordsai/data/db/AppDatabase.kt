@@ -27,6 +27,8 @@ import com.orchords.orchordsai.data.db.migrations.Migration_22_23
 import com.orchords.orchordsai.data.db.migrations.Migration_8_9
 import com.orchords.orchordsai.utils.JsonInstant
 
+const val APP_DATABASE_SCHEMA_VERSION = 24
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -38,7 +40,7 @@ import com.orchords.orchordsai.utils.JsonInstant
         WorkspaceEntity::class,
         FolderEntity::class,
     ],
-    version = 24,
+    version = APP_DATABASE_SCHEMA_VERSION,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
