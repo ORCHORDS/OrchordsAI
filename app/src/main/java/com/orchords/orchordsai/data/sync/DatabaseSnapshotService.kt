@@ -5,6 +5,8 @@ import com.orchords.orchordsai.data.db.AppDatabase
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,7 +51,13 @@ class DatabaseSnapshotService(
         check(hasSQLiteFileHeader(source)) {
             "Backup database snapshot is missing or invalid"
         }
-        val staged = File.createTempFile("orchordsai-db-restore-", ".db", context.cacheDir)
+        val liveFile = liveDatabaseFile()
+        val databaseDir = liveFile.parentFile
+            ?: error("Database directory is unavailable")
+        check(databaseDir.exists() || databaseDir.mkdirs()) {
+            "Database directory could not be created"
+        }
+        val staged = File.createTempFile("orchordsai-db-restore-", ".db", databaseDir)
         try {
             FileInputStream(source).use { input ->
                 FileOutputStream(staged).use { output ->
@@ -61,6 +69,28 @@ class DatabaseSnapshotService(
                 "Staged database snapshot is invalid"
             }
             staged
+        } catch (error: Throwable) {
+            staged.delete()
+            throw error
+        }
+    }
+
+    suspend fun restoreSnapshot(source: File) = withContext(Dispatchers.IO) {
+        val staged = stageRestore(source)
+        val liveFile = liveDatabaseFile()
+        val walFile = File(liveFile.path + "-wal")
+        val shmFile = File(liveFile.path + "-shm")
+
+        try {
+            database.close()
+            Files.move(
+                staged.toPath(),
+                liveFile.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+            walFile.delete()
+            shmFile.delete()
         } catch (error: Throwable) {
             staged.delete()
             throw error
