@@ -102,10 +102,10 @@ jobs:
         # *this* invocation. With a warm workspace Gradle marks every task
         # UP-TO-DATE and the extractor reports "this run didn't build any of
         # it" (gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
-        # `clean` plus `--rerun-tasks` forces the Kotlin/Java compile to run
-        # while still letting Gradle reuse its local caches for configuration.
+        # Cleaning the two extracted modules forces their compilation without
+        # `--rerun-tasks`, which would rebuild the entire transitive task graph.
         if: matrix.build
-        run: ./gradlew :material3:clean :material3:compileDebugKotlin :material3:testDebugUnitTest :app:clean :app:compileDebugKotlin --no-daemon --stacktrace --no-build-cache --rerun-tasks
+        run: ./gradlew :material3:clean :material3:compileDebugKotlin :material3:testDebugUnitTest :app:clean :app:compileDebugKotlin --no-daemon --stacktrace --no-build-cache
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
