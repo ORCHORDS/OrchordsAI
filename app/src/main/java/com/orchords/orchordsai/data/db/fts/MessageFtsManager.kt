@@ -78,7 +78,7 @@ class MessageFtsManager(private val database: AppDatabase) {
             """.trimIndent(),
             arrayOf(keyword)
         )
-        Log.i(TAG, "search: $keyword")
+        Log.i(TAG, messageFtsSearchLogMarker())
         cursor.use {
             while (it.moveToNext()) {
                 results.add(
