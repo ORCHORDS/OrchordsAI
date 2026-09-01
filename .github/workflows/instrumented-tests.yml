@@ -17,8 +17,7 @@ concurrency:
 
 jobs:
   managed-device:
-    # Bare-metal dedicated Linux runner: KVM acceleration and persistent SDK/AVD state.
-    runs-on: ubuntu-24.04-x64
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout repository
@@ -26,7 +25,6 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-          clean: false
 
       - name: Verify and enable KVM acceleration
         shell: bash
@@ -47,7 +45,6 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
-          gradle: false
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Cache emulator system image
@@ -62,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:pixel6api34Check
+          ./gradlew --no-daemon :app:pixel6api34Check
 
       - name: Upload test results on failure
         if: failure()
