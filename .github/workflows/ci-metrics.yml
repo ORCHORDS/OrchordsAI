@@ -1,0 +1,95 @@
+name: CI Metrics
+
+# Publishes workflow duration (P50/P95) and success-rate over the last
+# 14 days as a run summary, so CI speed regressions and cache-eviction
+# decay are visible without squinting at the Actions tab.
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Summarize workflow duration and reliability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          days = 14
+          since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+          runs = []
+          page = 1
+          while True:
+              query = urllib.parse.urlencode({"created": ">" + since, "per_page": 100, "page": page})
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs?{query}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                  },
+              )
+              with urllib.request.urlopen(req) as resp:
+                  batch = json.load(resp)["workflow_runs"]
+              runs.extend(batch)
+              if len(batch) < 100:
+                  break
+              page += 1
+
+          by_name = {}
+          for r in runs:
+              if not r.get("conclusion"):
+                  continue  # skip in-progress runs
+              duration = (
+                  dt.datetime.fromisoformat(r["updated_at"].replace("Z", "+00:00"))
+                  - dt.datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+              ).total_seconds()
+              by_name.setdefault(r["name"], []).append((r["conclusion"], duration))
+
+          def fmt(seconds):
+              return f"{int(seconds // 60)}m{seconds % 60:04.1f}s"
+
+          def percentile(values, p):
+              if not values:
+                  return "-"
+              ordered = sorted(values)
+              index = min(len(ordered) - 1, round(p / 100 * (len(ordered) - 1)))
+              return fmt(ordered[index])
+
+          lines = [
+              f"# CI metrics - last {days} days",
+              "",
+              f"{len(runs)} completed runs across {len(by_name)} workflows.",
+              "",
+              "| Workflow | Runs | Success | P50 | P95 |",
+              "|---|---:|---:|---:|---:|",
+          ]
+          for name, entries in sorted(by_name.items()):
+              durations = [d for _, d in entries]
+              ok = sum(1 for c, _ in entries if c == "success")
+              lines.append(
+                  f"| {name} | {len(entries)} | {100 * ok / len(entries):.0f}% "
+                  f"| {percentile(durations, 50)} | {percentile(durations, 95)} |"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with open(os.environ.get("GITHUB_STEP_SUMMARY", "summary.md"), "a") as handle:
+              handle.write(summary)
+          PY

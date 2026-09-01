@@ -1,4 +1,14 @@
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.PathSensitivity
+
+/**
+ * Exec is never stored in the build cache by default. Opting in lets CI
+ * runners restore the bundled web-ui output instead of re-running the vite
+ * build on every fresh runner; correctness relies on the declared inputs.
+ */
+@CacheableTask
+abstract class CacheableExec : Exec()
 
 plugins {
     id("orchordsai.android.library")
@@ -8,7 +18,7 @@ val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
 val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
 val isCodeQl = System.getenv("CODEQL_ACTION_VERSION") != null
 
-val buildWebUi = tasks.register<Exec>("buildWebUi") {
+val buildWebUi = tasks.register<CacheableExec>("buildWebUi") {
     group = "build"
     description = "Build web-ui and copy its static output into the web module resources."
 
@@ -28,9 +38,9 @@ val buildWebUi = tasks.register<Exec>("buildWebUi") {
         webUiDir.file("tsconfig.json"),
         webUiDir.file("vite.config.ts"),
         webUiDir.file("vite-env.d.ts")
-    )
-    inputs.dir(webUiDir.dir("app"))
-    inputs.dir(webUiDir.dir("public"))
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(webUiDir.dir("app")).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(webUiDir.dir("public")).withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.dir(webStaticResourcesDir)
 }
 

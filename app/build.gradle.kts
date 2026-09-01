@@ -93,6 +93,26 @@ android {
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
     }
+    testOptions {
+        unitTests {
+            // CI runners expose 4 vCPUs; forked test JVMs are isolated
+            // processes, so static state cannot leak between forks.
+            all { test ->
+                test.maxParallelForks = Runtime.getRuntime().availableProcessors().coerceAtMost(4)
+            }
+        }
+        managedDevices {
+            // ATD (automated test device) images are Google's trimmed
+            // emulator images for CI: faster boot, less overhead.
+            localDevices {
+                create("pixel6api34") {
+                    device = "Pixel 6"
+                    apiLevel = 34
+                    systemImageSource = "aosp-atd"
+                }
+            }
+        }
+    }
     androidResources {
         generateLocaleConfig = true
     }
