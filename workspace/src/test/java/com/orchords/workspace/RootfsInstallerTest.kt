@@ -2,11 +2,14 @@ package com.orchords.workspace
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.OutputStream
+import java.nio.file.Files
 import java.util.zip.GZIPOutputStream
 
 class RootfsInstallerTest {
@@ -44,18 +47,69 @@ class RootfsInstallerTest {
         val target = tmp.newFolder("out")
         createInstaller().extractTar(archive, target) {}
 
-        assertEquals(true, File(target, "dir").isDirectory)
+        assertTrue(File(target, "dir").isDirectory)
         assertEquals("content", File(target, "dir/file.txt").readText())
+    }
+
+    @Test
+    fun `extract preserves hardlink identity instead of copying file contents`() {
+        val archive = tmp.newFile("rootfs.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("bin/source", '0', ByteArray(4096) { 7 })
+            out.writeTarEntry("bin/alias", '1', ByteArray(0), linkName = "bin/source")
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("out")
+        createInstaller().extractTar(archive, target) {}
+
+        assertTrue(Files.isSameFile(File(target, "bin/source").toPath(), File(target, "bin/alias").toPath()))
+    }
+
+    @Test
+    fun `extract resolves hardlink whose target appears later in archive`() {
+        val archive = tmp.newFile("rootfs.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("bin/alias", '1', ByteArray(0), linkName = "bin/source")
+            out.writeTarEntry("bin/source", '0', "payload".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("out")
+        createInstaller().extractTar(archive, target) {}
+
+        assertTrue(Files.isSameFile(File(target, "bin/source").toPath(), File(target, "bin/alias").toPath()))
+        assertEquals("payload", File(target, "bin/alias").readText())
+    }
+
+    @Test
+    fun `extract fails when hardlink target never appears`() {
+        val archive = tmp.newFile("rootfs.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("bin/alias", '1', ByteArray(0), linkName = "bin/missing")
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("out")
+        assertThrows(IllegalArgumentException::class.java) {
+            createInstaller().extractTar(archive, target) {}
+        }
     }
 
     private fun createInstaller() = RootfsInstaller(WorkspaceManager(tmp.newFolder()))
 
-    private fun OutputStream.writeTarEntry(name: String, type: Char, data: ByteArray) {
+    private fun OutputStream.writeTarEntry(
+        name: String,
+        type: Char,
+        data: ByteArray,
+        linkName: String = "",
+    ) {
         val header = ByteArray(TAR_BLOCK)
         name.toByteArray(Charsets.UTF_8).copyInto(header, 0)
         "0000755".toByteArray().copyInto(header, 100)
         data.size.toLong().toOctalField().copyInto(header, 124)
         header[156] = type.code.toByte()
+        linkName.toByteArray(Charsets.UTF_8).copyInto(header, 157)
         write(header)
         write(data)
         val padding = (TAR_BLOCK - data.size % TAR_BLOCK) % TAR_BLOCK
