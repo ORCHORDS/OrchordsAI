@@ -37,10 +37,13 @@ runs:
         cache-encryption-key: ${{ inputs.cache-encryption-key }}
 
     - name: Set up pnpm
+      # Shell guard instead of pnpm/action-setup: the action installs into
+      # ~/setup-pnpm, which two concurrent agents sharing $HOME race on
+      # (ENOTEMPTY during cold start). npm is preinstalled on hosted images
+      # and the dedicated runner has pnpm globally already.
       if: ${{ inputs.web }}
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
-      with:
-        version: 11
+      shell: bash
+      run: command -v pnpm >/dev/null 2>&1 || sudo npm install -g pnpm@11
 
     - name: Set up Node
       if: ${{ inputs.web }}
