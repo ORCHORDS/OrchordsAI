@@ -17,6 +17,7 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.orchords.orchordsai", appContext.packageName)
+        // The debug build type appends the ".debug" applicationId suffix.
+        assertEquals(BuildConfig.APPLICATION_ID, appContext.packageName)
     }
 }
