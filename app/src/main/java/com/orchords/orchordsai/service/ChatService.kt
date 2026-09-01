@@ -7,6 +7,7 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.jsonObject
 import com.orchords.ai.core.MessageRole
 import com.orchords.ai.core.ReasoningLevel
@@ -94,6 +96,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
+private const val CHECKPOINT_CHUNK_INTERVAL = 20
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -316,21 +319,33 @@ class ChatService(
 
 
     suspend fun initializeConversation(conversationId: Uuid) {
-        getOrCreateSession(conversationId)
-        val conversation = conversationRepo.getConversationById(conversationId)
-        if (conversation != null) {
-            updateConversation(conversationId, conversation)
-            settingsStore.updateAssistant(conversation.assistantId)
-        } else {
-            val currentSettings = settingsStore.settingsFlowRaw.first()
-            val assistant = currentSettings.getCurrentAssistant()
-            val newConversation = Conversation.ofId(
-                id = conversationId,
-                assistantId = assistant.id,
-                newConversation = true
-            ).updateCurrentMessages(assistant.presetMessages)
-            updateConversation(conversationId, newConversation)
+        val session = getOrCreateSession(conversationId)
+        session.persistenceMutex.withLock {
+            if (session.hydrated) return
+            val conversation = conversationRepo.getConversationById(conversationId)
+            if (conversation != null) {
+                if (session.replaceFromStorage(conversation)) {
+                    settingsStore.updateAssistant(conversation.assistantId)
+                }
+            } else {
+                val currentSettings = settingsStore.settingsFlowRaw.first()
+                val assistant = currentSettings.getCurrentAssistant()
+                session.markNewConversationHydrated(
+                    Conversation.ofId(
+                        id = conversationId,
+                        assistantId = assistant.id,
+                        newConversation = true
+                    ).updateCurrentMessages(assistant.presetMessages)
+                )
+            }
         }
+    }
+
+    suspend fun requireHydratedConversation(conversationId: Uuid): Conversation {
+        initializeConversation(conversationId)
+        return getOrCreateSession(conversationId).state.value.takeIf {
+            conversationRepo.existsConversationById(conversationId)
+        } ?: throw NotFoundException("Conversation not found")
     }
 
 
@@ -369,6 +384,7 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 e.printStackTrace()
                 addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
             }
@@ -401,13 +417,15 @@ class ChatService(
         regenerateAssistantMsg: Boolean = true
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
+        val previousJob = session.getJob()
+        previousJob?.cancel()
 
         val job = launchGenerationJob(
             conversationId = conversationId,
             keepAliveInBackground = message.role == MessageRole.USER || regenerateAssistantMsg,
         ) {
             try {
+                previousJob?.join()
                 val conversation = session.state.value
 
                 if (message.role == MessageRole.USER) {
@@ -430,6 +448,7 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
             }
         }
@@ -446,20 +465,23 @@ class ChatService(
         answer: String? = null,
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
-
-        val hasOtherPendingTools = session.state.value.messageNodes.any { node ->
-            node.currentMessage.parts.any { part ->
-                part is UIMessagePart.Tool && part.isPending && part.toolCallId != toolCallId
-            }
-        }
+        val previousJob = session.getJob()
+        previousJob?.cancel()
 
         val job = launchGenerationJob(
             conversationId = conversationId,
-            keepAliveInBackground = !hasOtherPendingTools,
+            keepAliveInBackground = true,
         ) {
             try {
+                previousJob?.join()
                 val conversation = session.state.value
+                val matchingTools = conversation.messageNodes.flatMap { it.messages }
+                    .flatMap { it.parts }
+                    .filterIsInstance<UIMessagePart.Tool>()
+                    .filter { it.toolCallId == toolCallId && it.isPending }
+                if (matchingTools.size != 1) {
+                    throw NotFoundException("Pending tool not found")
+                }
                 val newApprovalState = when {
                     answer != null -> ToolApprovalState.Answered(answer)
                     approved -> ToolApprovalState.Approved
@@ -501,6 +523,7 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
         }
@@ -526,6 +549,7 @@ class ChatService(
         }
         val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
 
+        var chunksSinceCheckpoint = 0
         runCatching {
 
             // reset suggestions
@@ -542,8 +566,9 @@ class ChatService(
                 }
             }
 
-            // check invalid messages
-            checkInvalidMessages(conversationId)
+            // Structural cleanup is a prerequisite and must survive a failed attempt.
+            val cleaned = checkInvalidMessages(conversationId)
+            if (cleaned) checkpointConversation(getOrCreateSession(conversationId), force = true)
             val conversation = getConversationFlow(conversationId).value
 
             // start generating
@@ -646,7 +671,15 @@ class ChatService(
                     is GenerationChunk.Messages -> {
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(chunk.messages)
-                        updateConversation(conversationId, updatedConversation)
+                        val revision = updateConversation(conversationId, updatedConversation)
+                        chunksSinceCheckpoint++
+                        val hasToolBoundary = chunk.messages.any { message ->
+                            message.parts.any { it is UIMessagePart.Tool }
+                        }
+                        if (hasToolBoundary || chunksSinceCheckpoint >= CHECKPOINT_CHUNK_INTERVAL) {
+                            checkpointConversation(getOrCreateSession(conversationId), revision)
+                            chunksSinceCheckpoint = 0
+                        }
 
                         chunk.messages.lastOrNull()?.let { lastMessage ->
                             appEventBus.tryEmit(
@@ -656,13 +689,19 @@ class ChatService(
                     }
                 }
             }
-        }.onFailure {
+        }.onFailure { error ->
+            // Cancellation cannot abort its own durability flush.
+            withContext(NonCancellable) {
+                runCatching { checkpointConversation(getOrCreateSession(conversationId), force = true) }
+                    .onFailure { persistenceError -> Logging.log(TAG, "checkpoint failed: $persistenceError") }
+            }
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
+            if (error is CancellationException) throw error
 
-            it.printStackTrace()
-            addError(it, conversationId, title = context.getString(R.string.error_title_generation))
-            Logging.log(TAG, "handleMessageComplete: $it")
-            Logging.log(TAG, it.stackTraceToString())
+            error.printStackTrace()
+            addError(error, conversationId, title = context.getString(R.string.error_title_generation))
+            Logging.log(TAG, "handleMessageComplete: $error")
+            Logging.log(TAG, error.stackTraceToString())
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
             saveConversation(conversationId, finalConversation)
@@ -690,7 +729,7 @@ class ChatService(
     }
 
 
-    private fun checkInvalidMessages(conversationId: Uuid) {
+    private fun checkInvalidMessages(conversationId: Uuid): Boolean {
         val conversation = getConversationFlow(conversationId).value
         var messagesNodes = conversation.messageNodes
 
@@ -732,7 +771,9 @@ class ChatService(
 
         messagesNodes = messagesNodes.filter { it.messages.isNotEmpty() }
 
+        if (messagesNodes == conversation.messageNodes) return false
         updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
+        return true
     }
 
     private fun cancelToolByUser(tool: UIMessagePart.Tool): UIMessagePart.Tool {
@@ -798,13 +839,13 @@ class ChatService(
                 params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
             )
 
-            conversationRepo.getConversationById(conversation.id)?.let {
-                saveConversation(
-                    conversationId,
+            if (conversationRepo.existsConversationById(conversation.id)) {
+                mutateConversation(conversationId) {
                     it.copy(title = result.message.toText().trim())
-                )
+                }
             }
         }.onFailure {
+            if (it is CancellationException) throw it
             it.printStackTrace()
             addError(
                 error = it,
@@ -851,18 +892,11 @@ class ChatService(
                 result.message.toText().split("\n").map { it.trim() }
                     .filter { it.isNotBlank() }
 
-            val latestConversation = conversationRepo.getConversationById(conversationId)
-                ?: sessions[conversationId]?.state?.value
-                ?: conversation
-            saveConversation(
-                conversationId,
-                latestConversation.copy(
-                    chatSuggestions = suggestions.take(
-                        10
-                    )
-                )
-            )
+            mutateConversation(conversationId) {
+                it.copy(chatSuggestions = suggestions.take(10))
+            }
         }.onFailure {
+            if (it is CancellationException) throw it
             it.printStackTrace()
         }
     }
@@ -953,11 +987,11 @@ class ChatService(
     }
 
 
-    private fun updateConversation(conversationId: Uuid, conversation: Conversation) {
-        if (conversation.id != conversationId) return
+    private fun updateConversation(conversationId: Uuid, conversation: Conversation): Long {
+        if (conversation.id != conversationId) return -1
         val session = getOrCreateSession(conversationId)
         checkFilesDelete(conversation, session.state.value)
-        session.state.value = conversation
+        return session.update(conversation)
     }
 
     fun updateConversationState(conversationId: Uuid, update: (Conversation) -> Conversation) {
@@ -1004,18 +1038,35 @@ class ChatService(
     }
 
     suspend fun saveConversation(conversationId: Uuid, conversation: Conversation) {
-        val exists = conversationRepo.existsConversationById(conversation.id)
-        if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
-            return
-        }
+        val session = getOrCreateSession(conversationId)
+        val revision = updateConversation(conversationId, conversation.copy())
+        checkpointConversation(session, revision, force = true)
+    }
 
-        val updatedConversation = conversation.copy()
-        updateConversation(conversationId, updatedConversation)
+    suspend fun mutateConversation(
+        conversationId: Uuid,
+        transform: (Conversation) -> Conversation,
+    ): Conversation {
+        initializeConversation(conversationId)
+        val session = getOrCreateSession(conversationId)
+        val (updated, revision) = session.mutate(transform)
+        checkpointConversation(session, revision, force = true)
+        return updated
+    }
 
-        if (!exists) {
-            conversationRepo.insertConversation(updatedConversation)
-        } else {
-            conversationRepo.updateConversation(updatedConversation)
+    private suspend fun checkpointConversation(
+        session: ConversationSession,
+        requestedRevision: Long = session.revision,
+        force: Boolean = false,
+    ) {
+        session.persistenceMutex.withLock {
+            val revision = session.revision
+            if (revision < requestedRevision || (!force && revision <= session.persistedRevision)) return
+            val snapshot = session.state.value
+            val exists = conversationRepo.existsConversationById(snapshot.id)
+            if (!exists && snapshot.title.isBlank() && snapshot.messageNodes.isEmpty()) return
+            if (!exists) conversationRepo.insertConversation(snapshot) else conversationRepo.updateConversation(snapshot)
+            session.markPersisted(revision)
         }
     }
 
@@ -1051,6 +1102,7 @@ class ChatService(
                 // Save the conversation after translation is complete
                 saveConversation(conversationId, getConversationFlow(conversationId).value)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 // Clear translation field on error
                 clearTranslationField(conversationId, message.id)
                 addError(e, conversationId, title = context.getString(R.string.error_title_translate_message))

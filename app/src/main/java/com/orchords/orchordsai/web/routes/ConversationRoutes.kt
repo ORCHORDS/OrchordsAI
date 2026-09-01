@@ -163,10 +163,8 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/pin - Toggle pinned status
         post("/{id}/pin") {
             val uuid = call.parameters["id"].toUuid("conversation id")
-            val conversation = conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
-
-            chatService.saveConversation(uuid, conversation.copy(isPinned = !conversation.isPinned))
+            chatService.requireHydratedConversation(uuid)
+            chatService.mutateConversation(uuid) { it.copy(isPinned = !it.isPinned) }
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 
@@ -190,10 +188,8 @@ fun Route.conversationRoutes(
                 throw BadRequestException("Title must not be blank")
             }
 
-            val conversation = conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
-
-            chatService.saveConversation(uuid, conversation.copy(title = title))
+            chatService.requireHydratedConversation(uuid)
+            chatService.mutateConversation(uuid) { it.copy(title = title) }
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 
@@ -239,10 +235,8 @@ fun Route.conversationRoutes(
                 throw BadRequestException("Assistant not found")
             }
 
-            val conversation = conversationRepo.getConversationById(uuid)
-                ?: throw NotFoundException("Conversation not found")
-
-            chatService.saveConversation(uuid, conversation.copy(assistantId = targetAssistantId))
+            chatService.requireHydratedConversation(uuid)
+            chatService.mutateConversation(uuid) { it.copy(assistantId = targetAssistantId) }
             call.respond(HttpStatusCode.OK, mapOf("status" to "updated"))
         }
 
@@ -338,7 +332,7 @@ fun Route.conversationRoutes(
             val request = call.receive<RegenerateRequest>()
             val messageId = request.messageId.toUuid("message id")
 
-            val conversation = chatService.getConversationFlow(uuid).first()
+            val conversation = chatService.requireHydratedConversation(uuid)
             val node = conversation.getMessageNodeByMessageId(messageId)
             val message = node?.messages?.find { it.id == messageId }
                 ?: throw NotFoundException("Message not found")
@@ -358,6 +352,7 @@ fun Route.conversationRoutes(
         post("/{id}/tool-approval") {
             val uuid = call.parameters["id"].toUuid("conversation id")
             val request = call.receive<ToolApprovalRequest>()
+            chatService.requireHydratedConversation(uuid)
             chatService.handleToolApproval(uuid, request.toolCallId, request.approved, request.reason, request.answer)
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "accepted"))
         }

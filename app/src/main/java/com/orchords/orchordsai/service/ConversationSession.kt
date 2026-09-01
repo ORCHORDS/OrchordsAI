@@ -8,8 +8,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import com.orchords.orchordsai.data.model.Conversation
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.uuid.Uuid
 
 private const val TAG = "ConversationSession"
@@ -22,6 +24,54 @@ class ConversationSession(
     private val onIdle: (Uuid) -> Unit,
 ) {
     val state = MutableStateFlow(initial)
+
+    /** Serializes hydration and durable writes for this conversation. */
+    val persistenceMutex = Mutex()
+    private val revisionCounter = AtomicLong(0)
+    @Volatile var hydrated: Boolean = false
+        private set
+    @Volatile var persistedRevision: Long = -1
+        private set
+
+    val revision: Long get() = revisionCounter.get()
+
+    @Synchronized
+    fun replaceFromStorage(conversation: Conversation): Boolean {
+        if (hydrated || isGenerating || revision != 0L) return false
+        state.value = conversation
+        hydrated = true
+        persistedRevision = revision
+        return true
+    }
+
+    @Synchronized
+    fun markNewConversationHydrated(conversation: Conversation) {
+        if (!hydrated && !isGenerating && revision == 0L) {
+            state.value = conversation
+            hydrated = true
+            persistedRevision = revision
+        }
+    }
+
+    @Synchronized
+    fun update(conversation: Conversation): Long {
+        state.value = conversation
+        hydrated = true
+        return revisionCounter.incrementAndGet()
+    }
+
+    @Synchronized
+    fun mutate(transform: (Conversation) -> Conversation): Pair<Conversation, Long> {
+        val updated = transform(state.value)
+        state.value = updated
+        hydrated = true
+        return updated to revisionCounter.incrementAndGet()
+    }
+
+    @Synchronized
+    fun markPersisted(revision: Long) {
+        if (revision > persistedRevision) persistedRevision = revision
+    }
 
     private val refCount = AtomicInteger(0)
 
@@ -66,8 +116,8 @@ class ConversationSession(
         _generationJob.value?.cancel()
         _generationJob.value = job
         job?.invokeOnCompletion {
-            _generationJob.value = null
-            if (refCount.get() <= 0) {
+            // A cancelled predecessor must not clear a newer generation's identity.
+            if (_generationJob.compareAndSet(job, null) && refCount.get() <= 0) {
                 scheduleIdleCheck()
             }
         }
