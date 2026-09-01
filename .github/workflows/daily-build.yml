@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -46,7 +46,7 @@ jobs:
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -133,7 +133,7 @@ jobs:
   attest:
     needs: build
     if: needs.build.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -160,7 +160,7 @@ jobs:
   publish:
     needs: attest
     if: needs.attest.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write

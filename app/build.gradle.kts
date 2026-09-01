@@ -35,7 +35,10 @@ android {
             // AppBundle tasks usually contain "bundle" in their name
             //noinspection WrongGradleMethod
             val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
-            isEnable = !isBuildingBundle
+            // CI verification (-PciVerify, set by Main Verification) only needs
+            // one APK to prove the build; nightly/release keep full splits.
+            val isCiVerify = providers.gradleProperty("ciVerify").isPresent
+            isEnable = !isBuildingBundle && !isCiVerify
             reset()
             include("arm64-v8a", "x86_64")
             isUniversalApk = true

@@ -19,9 +19,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+  # Tests run in a parallel job so a broken push fails fast while the
+  # assemble job is still packaging. Both jobs share compiled outputs via
+  # the build cache.
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,9 +37,31 @@ jobs:
         with:
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
-      - name: Run unit tests, lint, and debug assembly
+      - name: Run unit tests and lint
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug
+
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up build toolchain
+        uses: ./.github/actions/setup-build
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
+
+      - name: Assemble debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon -PciVerify :app:assembleDebug
