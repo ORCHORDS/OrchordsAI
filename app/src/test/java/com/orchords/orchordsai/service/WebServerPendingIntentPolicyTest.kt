@@ -12,8 +12,18 @@ class WebServerPendingIntentPolicyTest {
             "src/main/java/com/orchords/orchordsai/service/WebServerService.kt"
         ).readText()
 
-        assertTrue(source.contains("Intent(this, OrchordsAiActivity::class.java)"))
+        assertTrue(source.contains("Intent(this, OrchordsAiActivity::class.java).setPackage(packageName)"))
         assertTrue(source.contains("PendingIntent.FLAG_IMMUTABLE"))
+        assertFalse(source.contains("getLaunchIntentForPackage"))
+    }
+
+    @Test
+    fun `notification stop pending intent stays scoped to the app package`() {
+        val source = File(
+            "src/main/java/com/orchords/orchordsai/service/WebServerService.kt"
+        ).readText()
+
+        assertTrue(source.contains("Intent(this, WebServerService::class.java).setPackage(packageName)"))
         assertFalse(source.contains("getLaunchIntentForPackage"))
     }
 }

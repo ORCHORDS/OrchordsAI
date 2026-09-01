@@ -141,7 +141,7 @@ class WebServerService : Service() {
     private fun buildLaunchPendingIntent() = PendingIntent.getActivity(
         this,
         0,
-        Intent(this, OrchordsAiActivity::class.java),
+        Intent(this, OrchordsAiActivity::class.java).setPackage(packageName),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
@@ -155,7 +155,7 @@ class WebServerService : Service() {
         .build()
 
     private fun buildRunningNotification(url: String): android.app.Notification {
-        val stopIntent = Intent(this, WebServerService::class.java).apply {
+        val stopIntent = Intent(this, WebServerService::class.java).setPackage(packageName).apply {
             action = ACTION_STOP
         }
         val stopPendingIntent = PendingIntent.getService(
