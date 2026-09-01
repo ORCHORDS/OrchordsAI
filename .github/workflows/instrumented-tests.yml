@@ -26,7 +26,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - name: Verify KVM acceleration
+      - name: Verify and enable KVM acceleration
         shell: bash
         run: |
           set -euo pipefail
@@ -34,6 +34,13 @@ jobs:
             echo "::error::KVM is unavailable on this runner; the emulator would fall back to unusably slow software emulation."
             exit 1
           fi
+          # /dev/kvm exists on hosted runners but is not always readable by
+          # the runner user; the emulator reports "x86_64 emulation currently
+          # requires hardware acceleration" without rw access.
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            sudo chmod a+rw /dev/kvm
+          fi
+          ls -l /dev/kvm
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
