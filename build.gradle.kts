@@ -27,6 +27,30 @@ plugins {
     alias(libs.plugins.baselineprofile) apply false
 }
 
+val codeqlForceCompile =
+    providers.gradleProperty("codeqlForceCompile").map(String::toBoolean).orElse(false)
+val codeqlCompileTasks =
+    setOf(
+        ":app:kspDebugKotlin",
+        ":app:compileDebugKotlin",
+        ":app:compileDebugJavaWithJavac",
+        ":material3:compileDebugKotlin",
+        ":material3:compileDebugJavaWithJavac",
+        ":material3:compileDebugUnitTestKotlin",
+        ":material3:compileDebugUnitTestJavaWithJavac",
+    )
+
+subprojects {
+    if (codeqlForceCompile.get()) {
+        tasks.configureEach {
+            if (path in codeqlCompileTasks) {
+                outputs.upToDateWhen { false }
+                outputs.doNotCacheIf("CodeQL must observe compiler execution") { true }
+            }
+        }
+    }
+}
+
 // Security pins for transitive dependencies (Dependabot alerts).
 // None of these artifacts are declared directly in the build; they arrive as
 // transitive dependencies of the server/SDK stacks used by the JVM-targeting

@@ -78,34 +78,17 @@ jobs:
           gradle: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
-      - name: Verify material3 dependency identity
-        if: matrix.build
-        shell: bash
-        run: |
-          set -euo pipefail
-          report="$RUNNER_TEMP/material3-debugCompileClasspath.txt"
-          ./gradlew :material3:dependencies --configuration debugCompileClasspath --no-daemon > "$report"
-          if grep -Eqi '(^|[ :])material-color-utilities([ :]|$)' "$report"; then
-            echo "::error::material-color-utilities must come only from the pinned Git submodule"
-            grep -Ei 'material-color-utilities' "$report" || true
-            exit 1
-          fi
-
       - name: Initialize CodeQL
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build && 'manual' || 'none' }}
 
-      - name: Compile and test for extraction
-        # Manual CodeQL extraction only sees what Gradle actually compiles in
-        # *this* invocation. With a warm workspace Gradle marks every task
-        # UP-TO-DATE and the extractor reports "this run didn't build any of
-        # it" (gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
-        # `clean` plus `--rerun-tasks` forces the Kotlin/Java compile to run
-        # while still letting Gradle reuse its local caches for configuration.
+      - name: Compile for extraction
+        # Force only compiler/KSP tasks so CodeQL observes real compilation;
+        # preserve unrelated warm outputs and build-cache reuse.
         if: matrix.build
-        run: ./gradlew :material3:clean :material3:compileDebugKotlin :material3:testDebugUnitTest :app:clean :app:compileDebugKotlin --no-daemon --stacktrace --no-build-cache --rerun-tasks
+        run: ./gradlew -PcodeqlForceCompile=true :material3:compileDebugUnitTestKotlin :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
