@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setting_provider_page_instruction_role_mode">Instruction Role</string>
+    <string name="setting_provider_page_instruction_role_mode_auto">Auto</string>
+    <string name="setting_provider_page_instruction_role_mode_system">System</string>
+    <string name="setting_provider_page_instruction_role_mode_developer">Developer</string>
+</resources>
