@@ -23,7 +23,7 @@ class ProviderIngressPolicyTest {
         }
 
         assertEquals(5, error.limitBytes)
-        assertEquals(6, error.observedBytes)
+        assertEquals(6L, error.observedBytes)
     }
 
     @Test
@@ -41,7 +41,7 @@ class ProviderIngressPolicyTest {
             requireProviderSseEventWithinLimit("a€😀", maxBytes = 7)
         }
         assertEquals(7, error.limitBytes)
-        assertEquals(8, error.observedBytes)
+        assertEquals(8L, error.observedBytes)
     }
 
     @Test
