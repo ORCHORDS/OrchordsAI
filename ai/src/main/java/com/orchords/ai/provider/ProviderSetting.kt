@@ -42,6 +42,25 @@ enum class StreamingUsageMode {
     DISABLED,
 }
 
+/**
+ * Controls how canonical SYSTEM instructions are serialized on OpenAI Chat
+ * Completions routes without mutating the stored conversation message role.
+ *
+ * [AUTO] uses provider-route/model capability defaults, while [SYSTEM] and
+ * [DEVELOPER] are explicit compatibility overrides for custom endpoints.
+ */
+@Serializable
+enum class InstructionRoleMode {
+    @SerialName("auto")
+    AUTO,
+
+    @SerialName("system")
+    SYSTEM,
+
+    @SerialName("developer")
+    DEVELOPER,
+}
+
 @Serializable
 sealed class ProviderSetting {
     abstract val id: Uuid
@@ -86,6 +105,7 @@ sealed class ProviderSetting {
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
         var streamingUsageMode: StreamingUsageMode = StreamingUsageMode.AUTO,
+        var instructionRoleMode: InstructionRoleMode = InstructionRoleMode.AUTO,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
