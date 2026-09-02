@@ -1,6 +1,10 @@
 package com.orchords.orchordsai.service
 
+import com.orchords.ai.ui.GenerationTermination
+import com.orchords.ai.ui.GenerationTerminationCategory
+import com.orchords.ai.ui.UIMessage
 import com.orchords.orchordsai.data.model.Conversation
+import com.orchords.orchordsai.data.model.MessageNode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -136,6 +140,34 @@ class ConversationSessionTest {
     }
 
     @Test
+    fun `process recreation preserves partial assistant as incomplete`() {
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
+        val liveSession = session(initial)
+        val partialAssistant = UIMessage.assistant("visible partial output").copy(
+            termination = GenerationTermination(
+                category = GenerationTerminationCategory.STREAM_INCOMPLETE,
+                rawProviderCode = null,
+                providerTerminalObserved = false,
+            )
+        )
+        val partialSnapshot = initial.copy(
+            messageNodes = listOf(MessageNode.of(partialAssistant)),
+            title = "partial generation checkpoint",
+        )
+        val persistedRevision = liveSession.update(partialSnapshot)
+        liveSession.markPersisted(persistedRevision)
+
+        val recreatedSession = session(Conversation.ofId(initial.id, initial.assistantId))
+
+        assertTrue(recreatedSession.replaceFromStorage(partialSnapshot))
+        val restoredAssistant = recreatedSession.state.value.currentMessages.single()
+        assertEquals("visible partial output", restoredAssistant.toText())
+        assertEquals(GenerationTerminationCategory.STREAM_INCOMPLETE, restoredAssistant.termination?.category)
+        assertFalse(restoredAssistant.termination?.providerTerminalObserved ?: true)
+        assertFalse(restoredAssistant.termination?.category == GenerationTerminationCategory.COMPLETED)
+    }
+
+    @Test
     fun `structural mutation waits for cancellation flush of active generation`() {
         val initial = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
         val session = session(initial)
@@ -150,8 +182,6 @@ class ConversationSessionTest {
             } finally {
                 withContext(NonCancellable) {
                     flushEntered.set(true)
-                    // The cancellation flush is slow: a structural mutation must not observe
-                    // session state until this block finishes.
                     while (!flushDone.get()) delay(10)
                     session.update(initial.copy(title = "flushed by cancelled attempt"))
                 }
@@ -161,15 +191,12 @@ class ConversationSessionTest {
 
         val mutator = scope.launch {
             session.awaitInactiveGeneration()
-            // The fence must return only after the cancelled attempt's flush completed.
             assertTrue(flushEntered.get())
             assertTrue(flushDone.get())
             session.update(initial.copy(title = "structural mutation"))
             mutatorFinished.set(true)
         }
 
-        // Let the cancelled job reach its finally block, then release the flush while the
-        // mutator is (still) suspended on the fence.
         while (!flushEntered.get()) Thread.sleep(10)
         Thread.sleep(100)
         assertFalse(mutatorFinished.get())
