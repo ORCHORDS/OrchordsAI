@@ -240,7 +240,13 @@ class ChatCompletionsAPI(
                 if (params.temperature != null) put("temperature", params.temperature)
                 if (params.topP != null) put("top_p", params.topP)
             }
-            if (params.maxTokens != null) put("max_tokens", params.maxTokens)
+            if (params.maxTokens != null) {
+                if (isModelRequiresMaxCompletionTokens(params.model)) {
+                    put("max_completion_tokens", params.maxTokens)
+                } else {
+                    put("max_tokens", params.maxTokens)
+                }
+            }
 
             put("stream", stream)
             if (stream) {
@@ -435,6 +441,13 @@ class ChatCompletionsAPI(
         return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) &&
                !ModelRegistry.GPT_5.match(model.modelId) &&
                !isMoonshotRestricted
+    }
+
+    // OpenAI reasoning families reject legacy `max_tokens` with HTTP 400 and require
+    // `max_completion_tokens` instead.
+    private fun isModelRequiresMaxCompletionTokens(model: Model): Boolean {
+        return ModelRegistry.OPENAI_O_MODELS.match(model.modelId) ||
+               ModelRegistry.GPT_5.match(model.modelId)
     }
 
     private fun buildMessages(
