@@ -22,14 +22,38 @@ internal data class MessageNodeLoadResult(
         get() = if (corruptNodeIds.isEmpty()) ConversationLoadState.COMPLETE else ConversationLoadState.PARTIAL
 }
 
+internal interface ConversationNodeReader {
+    suspend fun count(conversationId: String): Int
+    suspend fun page(conversationId: String, limit: Int, offset: Int): List<MessageNodeEntity>
+    suspend fun nodeIdAtOffset(conversationId: String, offset: Int): String?
+    suspend fun nodeById(nodeId: String): MessageNodeEntity?
+}
+
 internal suspend fun loadConversationNodesSafely(
     messageNodeDAO: MessageNodeDAO,
+    conversationId: String,
+    favoriteNodeIds: Set<Uuid>,
+): MessageNodeLoadResult = loadConversationNodesSafely(
+    reader = object : ConversationNodeReader {
+        override suspend fun count(conversationId: String) = messageNodeDAO.countNodesOfConversation(conversationId)
+        override suspend fun page(conversationId: String, limit: Int, offset: Int) =
+            messageNodeDAO.getNodesOfConversationPaged(conversationId, limit, offset)
+        override suspend fun nodeIdAtOffset(conversationId: String, offset: Int) =
+            messageNodeDAO.getNodeIdAtOffset(conversationId, offset)
+        override suspend fun nodeById(nodeId: String) = messageNodeDAO.getNodeById(nodeId)
+    },
+    conversationId = conversationId,
+    favoriteNodeIds = favoriteNodeIds,
+)
+
+internal suspend fun loadConversationNodesSafely(
+    reader: ConversationNodeReader,
     conversationId: String,
     favoriteNodeIds: Set<Uuid>,
 ): MessageNodeLoadResult {
     val nodes = mutableListOf<MessageNode>()
     val corruptNodeIds = linkedSetOf<String>()
-    val total = messageNodeDAO.countNodesOfConversation(conversationId)
+    val total = reader.count(conversationId)
     var offset = 0
 
     fun decode(entity: MessageNodeEntity) {
@@ -51,7 +75,7 @@ internal suspend fun loadConversationNodesSafely(
 
     while (offset < total) {
         val page = try {
-            messageNodeDAO.getNodesOfConversationPaged(conversationId, NODE_PAGE_SIZE, offset)
+            reader.page(conversationId, NODE_PAGE_SIZE, offset)
         } catch (error: SQLiteBlobTooBigException) {
             null
         } catch (error: IllegalStateException) {
@@ -67,9 +91,9 @@ internal suspend fun loadConversationNodesSafely(
 
         val pageEnd = minOf(offset + NODE_PAGE_SIZE, total)
         for (rowOffset in offset until pageEnd) {
-            val nodeId = messageNodeDAO.getNodeIdAtOffset(conversationId, rowOffset) ?: continue
+            val nodeId = reader.nodeIdAtOffset(conversationId, rowOffset) ?: continue
             val entity = try {
-                messageNodeDAO.getNodeById(nodeId)
+                reader.nodeById(nodeId)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
