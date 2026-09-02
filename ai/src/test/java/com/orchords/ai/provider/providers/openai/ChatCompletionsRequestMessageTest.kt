@@ -47,14 +47,20 @@ class ChatCompletionsRequestMessageTest {
         val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
             "buildMessages",
             List::class.java,
+            com.orchords.ai.provider.Model::class.java,
             Boolean::class.javaPrimitiveType,
             Boolean::class.javaPrimitiveType,
             List::class.java
         )
         method.isAccessible = true
+        val model = com.orchords.ai.provider.Model(
+            modelId = "gpt-5",
+            abilities = emptyList(),
+        )
         return method.invoke(
             api,
             messages,
+            model,
             includeHistoryReasoning,
             includeOpenRouterReasoningDetails,
             listOf(Modality.TEXT, Modality.IMAGE)

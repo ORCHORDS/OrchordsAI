@@ -26,6 +26,19 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    // OpenAI reasoning models that require the chat completions `developer`
+    // role for system-style instructions instead of the legacy `system` role.
+    //   - o1-2024-12-17 and later bare o1 variants support `developer`
+    //   - o3, o4, o5 (and their sub-variants) support `developer`
+    //   - o1-preview and o1-mini reject `developer` and are intentionally
+    //     excluded via notTokens so the Chat Completions API keeps sending
+    //     `system` for them.
+    val OPENAI_O_DEVELOPER_ROLE = defineModel {
+        tokens(tokenRegex("^o$"), tokenRegex("^\\d+$"))
+        notTokens("o", "1", "-", "preview")
+        notTokens("o", "1", "-", "mini")
+    }
+
     private val GPT_OSS = defineModel {
         tokens("gpt", "oss")
         toolReasoningAbility()
@@ -86,6 +99,23 @@ object ModelRegistry {
         visionInput()
         toolReasoningAbility()
     }
+
+    // GPT-5 reasoning families that require the `developer` role for
+    // system-style instructions. GPT_5_3 is the chat variant (no REASONING
+    // ability) and is intentionally not part of this group, so its callers
+    // continue to send the legacy `system` role.
+    val GPT_5_DEVELOPER_ROLE = ModelGroup(
+        listOf(
+            GPT_5,
+            GPT_5_1,
+            GPT_5_2,
+            GPT_5_4,
+            GPT_5_4_MINI,
+            GPT_5_4_NANO,
+            GPT_5_5,
+            GPT_5_6,
+        )
+    )
 
     private val GEMINI_20_FLASH = defineModel {
         tokens("gemini", "2", "0", "flash")

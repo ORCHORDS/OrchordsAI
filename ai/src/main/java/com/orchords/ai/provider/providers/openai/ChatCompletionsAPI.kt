@@ -230,6 +230,7 @@ class ChatCompletionsAPI(
                 "messages",
                 buildMessages(
                     messages = messages,
+                    model = params.model,
                     includeHistoryReasoning = providerSetting.includeHistoryReasoning,
                     includeOpenRouterReasoningDetails = isOpenRouter,
                     supportInputModalities = params.model.inputModalities,
@@ -450,8 +451,27 @@ class ChatCompletionsAPI(
                ModelRegistry.GPT_5.match(model.modelId)
     }
 
+    // Newer o1 reasoning variants and the GPT-5 reasoning families reject the
+    // legacy `system` role and require the chat completions `developer` role
+    // for system-style instructions. Legacy o1-preview / o1-mini still require
+    // `system`, and arbitrary OpenAI-compatible endpoints may not implement
+    // `developer` at all, so we only swap the role for the specific families
+    // the OpenAI API has documented as `developer`-only.
+    private fun isModelRequiresDeveloperRole(model: Model): Boolean {
+        return ModelRegistry.OPENAI_O_DEVELOPER_ROLE.match(model.modelId) ||
+               ModelRegistry.GPT_5_DEVELOPER_ROLE.match(model.modelId)
+    }
+
+    private fun serializeRoleForModel(role: MessageRole, model: Model): String {
+        if (role == MessageRole.SYSTEM && isModelRequiresDeveloperRole(model)) {
+            return "developer"
+        }
+        return role.name.lowercase()
+    }
+
     private fun buildMessages(
         messages: List<UIMessage>,
+        model: Model,
         includeHistoryReasoning: Boolean = true,
         includeOpenRouterReasoningDetails: Boolean = false,
         supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
@@ -467,7 +487,7 @@ class ChatCompletionsAPI(
                     supportInputModalities = supportInputModalities,
                 )
             } else {
-                addNonAssistantMessage(message)
+                addNonAssistantMessage(message, model)
             }
         }
     }
@@ -621,9 +641,9 @@ class ChatCompletionsAPI(
         }
     }
 
-    private fun JsonArrayBuilder.addNonAssistantMessage(message: UIMessage) {
+    private fun JsonArrayBuilder.addNonAssistantMessage(message: UIMessage, model: Model) {
         add(buildJsonObject {
-            put("role", JsonPrimitive(message.role.name.lowercase()))
+            put("role", JsonPrimitive(serializeRoleForModel(message.role, model)))
 
             if (message.parts.isOnlyTextPart()) {
                 put("content", message.parts.filterIsInstance<UIMessagePart.Text>().first().text)
