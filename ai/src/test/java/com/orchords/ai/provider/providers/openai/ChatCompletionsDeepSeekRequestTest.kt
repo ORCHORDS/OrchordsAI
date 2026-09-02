@@ -23,11 +23,33 @@ class ChatCompletionsDeepSeekRequestTest {
     }
 
     @Test
+    fun `official DeepSeek V4 maps xhigh to max in serialized request`() {
+        val body = buildRequest(
+            baseUrl = "https://api.deepseek.com",
+            modelId = "deepseek-v4-flash",
+            reasoningLevel = ReasoningLevel.XHIGH,
+        )
+
+        assertEquals("max", body["reasoning_effort"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `opencode DeepSeek V4 maps xhigh to max in serialized request`() {
         val body = buildRequest(
             baseUrl = "https://opencode.ai/zen/v1",
             modelId = "deepseek-v4-flash",
             reasoningLevel = ReasoningLevel.XHIGH,
+        )
+
+        assertEquals("max", body["reasoning_effort"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `generic compatible DeepSeek V4 maps max to max in serialized request`() {
+        val body = buildRequest(
+            baseUrl = "https://gateway.example.com/v1",
+            modelId = "deepseek-v4-pro",
+            reasoningLevel = ReasoningLevel.MAX,
         )
 
         assertEquals("max", body["reasoning_effort"]?.jsonPrimitive?.content)
