@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
 import com.orchords.ai.provider.ClaudePromptCacheTtl
+import com.orchords.ai.provider.InstructionRoleMode
 import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.StreamingUsageMode
 import com.orchords.orchordsai.R
@@ -288,6 +289,26 @@ private fun ProviderConfigureOpenAI(
             checked = provider.includeHistoryReasoning,
             onCheckedChange = { onEdit(provider.copy(includeHistoryReasoning = it)) }
         )
+    }
+
+    Text(stringResource(R.string.setting_provider_page_instruction_role_mode))
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        InstructionRoleMode.entries.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = provider.instructionRoleMode == mode,
+                onClick = { onEdit(provider.copy(instructionRoleMode = mode)) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = InstructionRoleMode.entries.size),
+                label = {
+                    Text(
+                        when (mode) {
+                            InstructionRoleMode.AUTO -> stringResource(R.string.setting_provider_page_instruction_role_mode_auto)
+                            InstructionRoleMode.SYSTEM -> stringResource(R.string.setting_provider_page_instruction_role_mode_system)
+                            InstructionRoleMode.DEVELOPER -> stringResource(R.string.setting_provider_page_instruction_role_mode_developer)
+                        }
+                    )
+                }
+            )
+        }
     }
 
     Text(stringResource(R.string.setting_provider_page_streaming_usage_mode))
