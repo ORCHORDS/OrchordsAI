@@ -48,6 +48,12 @@ const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 
+internal fun webServerNetworkPermissionAllowsAutoStart(
+    apiLevel: Int,
+    localhostOnly: Boolean,
+    localNetworkPermissionGranted: Boolean,
+): Boolean = apiLevel < 37 || localhostOnly || localNetworkPermissionGranted
+
 class OrchordsAIApp : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -162,21 +168,16 @@ class OrchordsAIApp : Application() {
                 delay(500)
                 val settings = get<SettingsStore>().settingsFlowRaw.first()
                 if (settings.webServerEnabled) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                        ContextCompat.checkSelfPermission(
-                            this@OrchordsAIApp,
-                            android.Manifest.permission.POST_NOTIFICATIONS
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        Log.w(TAG, "startWebServerIfEnabled: notification permission not granted, skipping")
-                        return@launch
-                    }
-                    if (Build.VERSION.SDK_INT >= 37 &&
-                        !settings.webServerLocalhostOnly &&
+                    val localNetworkPermissionGranted = Build.VERSION.SDK_INT < 37 ||
                         ContextCompat.checkSelfPermission(
                             this@OrchordsAIApp,
                             android.Manifest.permission.ACCESS_LOCAL_NETWORK
-                        ) != PackageManager.PERMISSION_GRANTED
+                        ) == PackageManager.PERMISSION_GRANTED
+                    if (!webServerNetworkPermissionAllowsAutoStart(
+                            apiLevel = Build.VERSION.SDK_INT,
+                            localhostOnly = settings.webServerLocalhostOnly,
+                            localNetworkPermissionGranted = localNetworkPermissionGranted,
+                        )
                     ) {
                         Log.w(TAG, "startWebServerIfEnabled: local network permission not granted, skipping")
                         return@launch
