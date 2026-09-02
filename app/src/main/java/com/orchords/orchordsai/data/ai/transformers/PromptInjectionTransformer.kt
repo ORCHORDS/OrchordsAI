@@ -53,8 +53,13 @@ internal fun transformMessages(
         return messages
     }
 
+    // Priority is authoritative. UUID provides a stable secondary key so equal-priority
+    // imports produce the same order regardless of collection/list reconstruction order.
     val byPosition = injections
-        .sortedByDescending { it.priority }
+        .sortedWith(
+            compareByDescending<PromptInjection> { it.priority }
+                .thenBy { it.id.toString() }
+        )
         .groupBy { it.position }
 
     return applyInjections(messages, byPosition)
@@ -204,19 +209,32 @@ internal fun applyInjections(
 }
 
 /**
+ * Merge only adjacent injections with the same role. Merging non-adjacent entries
+ * would move lower-priority content across an intervening higher-priority role.
  */
 private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
-    return injections
-        .groupBy { it.role }
-        .map { (role, grouped) ->
-            val mergedContent = grouped.joinToString("\n") { it.content }
-            when (role) {
-                MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
-                else -> UIMessage.user(mergedContent)
-            }.copy(
-                isSynthetic = true,
-            )
+    if (injections.isEmpty()) return emptyList()
+
+    val consecutiveGroups = mutableListOf<MutableList<PromptInjection>>()
+    injections.forEach { injection ->
+        val current = consecutiveGroups.lastOrNull()
+        if (current != null && current.last().role == injection.role) {
+            current.add(injection)
+        } else {
+            consecutiveGroups.add(mutableListOf(injection))
         }
+    }
+
+    return consecutiveGroups.map { grouped ->
+        val role = grouped.first().role
+        val mergedContent = grouped.joinToString("\n") { it.content }
+        when (role) {
+            MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
+            else -> UIMessage.user(mergedContent)
+        }.copy(
+            isSynthetic = true,
+        )
+    }
 }
 
 /**
