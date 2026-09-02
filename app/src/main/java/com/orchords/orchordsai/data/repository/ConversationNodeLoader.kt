@@ -14,6 +14,12 @@ import kotlin.uuid.Uuid
 private const val TAG = "ConversationNodeLoader"
 private const val NODE_PAGE_SIZE = 64
 
+private fun logUnreadable(message: String) {
+    // Diagnostics are best-effort and must never turn a recoverable corrupt row
+    // into a loader failure (including JVM unit tests where android.util.Log is absent).
+    runCatching { Log.w(TAG, message) }
+}
+
 internal data class MessageNodeLoadResult(
     val nodes: List<MessageNode>,
     val corruptNodeIds: Set<String>,
@@ -69,7 +75,9 @@ internal suspend fun loadConversationNodesSafely(
             throw error
         } catch (error: Exception) {
             corruptNodeIds += entity.id
-            Log.w(TAG, "Unreadable message node conversation=$conversationId node=${entity.id} error=${error.javaClass.simpleName}")
+            logUnreadable(
+                "Unreadable message node conversation=$conversationId node=${entity.id} error=${error.javaClass.simpleName}"
+            )
         }
     }
 
@@ -98,7 +106,9 @@ internal suspend fun loadConversationNodesSafely(
                 throw error
             } catch (error: Exception) {
                 corruptNodeIds += nodeId
-                Log.w(TAG, "Unreadable message row conversation=$conversationId node=$nodeId error=${error.javaClass.simpleName}")
+                logUnreadable(
+                    "Unreadable message row conversation=$conversationId node=$nodeId error=${error.javaClass.simpleName}"
+                )
                 null
             }
             if (entity != null) decode(entity)
