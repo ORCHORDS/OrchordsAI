@@ -34,6 +34,7 @@ import com.orchords.ai.provider.Modality
 import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
 import com.orchords.ai.provider.ProviderSetting
+import com.orchords.ai.provider.StreamingUsageMode
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.stream.SseEvent
@@ -250,12 +251,10 @@ class ChatCompletionsAPI(
             }
 
             put("stream", stream)
-            if (stream) {
-                if (host != "api.mistral.ai") {
-                    put("stream_options", buildJsonObject {
-                        put("include_usage", true)
-                    })
-                }
+            if (stream && resolveStreamingUsage(providerSetting.streamingUsageMode, host)) {
+                put("stream_options", buildJsonObject {
+                    put("include_usage", true)
+                })
             }
 
             if(isOpenRouter) {
@@ -449,6 +448,31 @@ class ChatCompletionsAPI(
     private fun isModelRequiresMaxCompletionTokens(model: Model): Boolean {
         return ModelRegistry.OPENAI_O_MODELS.match(model.modelId) ||
                ModelRegistry.GPT_5.match(model.modelId)
+    }
+
+    /**
+     * Hosts that officially document `stream_options.include_usage` in their
+     * chat completions API reference. Unknown hosts conservatively omit the
+     * field: some strict OpenAI-compatible servers (e.g. Mistral) reject it
+     * with HTTP 422, and usage then arrives in the final SSE chunk anyway or
+     * stays unknown rather than being fabricated.
+     */
+    private val streamingUsageHosts = setOf(
+        "api.openai.com",
+        "api.deepseek.com",
+        "api.moonshot.cn",
+        "api.moonshot.ai",
+        "api.x.ai",
+        "dashscope.aliyuncs.com",
+        "api.siliconflow.cn",
+        "api.hunyuan.cloud.tencent.com",
+        "openrouter.ai",
+    )
+
+    internal fun resolveStreamingUsage(mode: StreamingUsageMode, host: String): Boolean = when (mode) {
+        StreamingUsageMode.ENABLED -> true
+        StreamingUsageMode.DISABLED -> false
+        StreamingUsageMode.AUTO -> host in streamingUsageHosts
     }
 
     // Newer o1 reasoning variants and the GPT-5 reasoning families reject the

@@ -22,6 +22,26 @@ enum class ClaudePromptCacheTtl(val apiValue: String?) {
     ONE_HOUR("1h")
 }
 
+/**
+ * Controls whether streaming chat completion requests carry
+ * `stream_options: { include_usage: true }`.
+ *
+ * [AUTO] resolves the capability from the built-in host table and omits the
+ * field for unknown hosts; [ENABLED]/[DISABLED] are explicit overrides for
+ * endpoints the table does not know.
+ */
+@Serializable
+enum class StreamingUsageMode {
+    @SerialName("auto")
+    AUTO,
+
+    @SerialName("enabled")
+    ENABLED,
+
+    @SerialName("disabled")
+    DISABLED,
+}
+
 @Serializable
 sealed class ProviderSetting {
     abstract val id: Uuid
@@ -65,6 +85,7 @@ sealed class ProviderSetting {
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
+        var streamingUsageMode: StreamingUsageMode = StreamingUsageMode.AUTO,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
