@@ -30,6 +30,7 @@ import com.orchords.ai.core.InputSchema
 import com.orchords.ai.core.MessageRole
 import com.orchords.ai.core.ReasoningLevel
 import com.orchords.ai.core.TokenUsage
+import com.orchords.ai.provider.InstructionRoleMode
 import com.orchords.ai.provider.Modality
 import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
@@ -235,6 +236,8 @@ class ChatCompletionsAPI(
                     includeHistoryReasoning = providerSetting.includeHistoryReasoning,
                     includeOpenRouterReasoningDetails = isOpenRouter,
                     supportInputModalities = params.model.inputModalities,
+                    instructionRoleMode = providerSetting.instructionRoleMode,
+                    host = host,
                 )
             )
 
@@ -478,27 +481,50 @@ class ChatCompletionsAPI(
     // Newer o1 reasoning variants and the GPT-5 reasoning families reject the
     // legacy `system` role and require the chat completions `developer` role
     // for system-style instructions. Legacy o1-preview / o1-mini still require
-    // `system`, and arbitrary OpenAI-compatible endpoints may not implement
-    // `developer` at all, so we only swap the role for the specific families
-    // the OpenAI API has documented as `developer`-only.
+    // `system`. Custom OpenAI-compatible endpoints default to `system` unless
+    // the user explicitly declares developer-role compatibility.
     private fun isModelRequiresDeveloperRole(model: Model): Boolean {
         return ModelRegistry.OPENAI_O_DEVELOPER_ROLE.match(model.modelId) ||
                ModelRegistry.GPT_5_DEVELOPER_ROLE.match(model.modelId)
     }
 
-    private fun serializeRoleForModel(role: MessageRole, model: Model): String {
-        if (role == MessageRole.SYSTEM && isModelRequiresDeveloperRole(model)) {
-            return "developer"
+    internal fun resolveInstructionRole(
+        mode: InstructionRoleMode,
+        host: String,
+        model: Model,
+    ): String = when (mode) {
+        InstructionRoleMode.SYSTEM -> "system"
+        InstructionRoleMode.DEVELOPER -> "developer"
+        InstructionRoleMode.AUTO -> {
+            if (host == "api.openai.com" && isModelRequiresDeveloperRole(model)) {
+                "developer"
+            } else {
+                "system"
+            }
+        }
+    }
+
+    private fun serializeRoleForModel(
+        role: MessageRole,
+        model: Model,
+        instructionRoleMode: InstructionRoleMode = InstructionRoleMode.AUTO,
+        host: String = "api.openai.com",
+    ): String {
+        if (role == MessageRole.SYSTEM) {
+            return resolveInstructionRole(instructionRoleMode, host, model)
         }
         return role.name.lowercase()
     }
 
+    @JvmOverloads
     private fun buildMessages(
         messages: List<UIMessage>,
         model: Model,
         includeHistoryReasoning: Boolean = true,
         includeOpenRouterReasoningDetails: Boolean = false,
         supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
+        instructionRoleMode: InstructionRoleMode = InstructionRoleMode.AUTO,
+        host: String = "api.openai.com",
     ) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
 
@@ -511,7 +537,12 @@ class ChatCompletionsAPI(
                     supportInputModalities = supportInputModalities,
                 )
             } else {
-                addNonAssistantMessage(message, model)
+                addNonAssistantMessage(
+                    message = message,
+                    model = model,
+                    instructionRoleMode = instructionRoleMode,
+                    host = host,
+                )
             }
         }
     }
@@ -665,9 +696,24 @@ class ChatCompletionsAPI(
         }
     }
 
-    private fun JsonArrayBuilder.addNonAssistantMessage(message: UIMessage, model: Model) {
+    private fun JsonArrayBuilder.addNonAssistantMessage(
+        message: UIMessage,
+        model: Model,
+        instructionRoleMode: InstructionRoleMode,
+        host: String,
+    ) {
         add(buildJsonObject {
-            put("role", JsonPrimitive(serializeRoleForModel(message.role, model)))
+            put(
+                "role",
+                JsonPrimitive(
+                    serializeRoleForModel(
+                        role = message.role,
+                        model = model,
+                        instructionRoleMode = instructionRoleMode,
+                        host = host,
+                    )
+                )
+            )
 
             if (message.parts.isOnlyTextPart()) {
                 put("content", message.parts.filterIsInstance<UIMessagePart.Text>().first().text)
