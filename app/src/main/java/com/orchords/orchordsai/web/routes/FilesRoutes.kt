@@ -104,10 +104,11 @@ fun Route.filesRoutes(
             val entity = filesManager.get(id)
                 ?: throw NotFoundException("File not found")
 
-            val file = filesManager.getFile(entity)
-            if (!file.exists()) {
-                throw NotFoundException("File not found on disk")
-            }
+            // A managed DB row is identity metadata, not filesystem authority. Revalidate the
+            // persisted relative path at the read boundary so restore/import/corruption cannot
+            // turn a numeric managed-file ID into an arbitrary app/private filesystem read.
+            val file = resolveManagedWebFileById(context.filesDir, entity)
+                ?: throw NotFoundException("File not found")
 
             call.response.header("Content-Type", entity.mimeType)
             call.respondFile(file)

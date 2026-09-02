@@ -26,6 +26,21 @@ class ManagedWebFileAccessTest {
     }
 
     @Test
+    fun `managed id resolves only a contained persisted path`() {
+        val root = Files.createTempDirectory("managed-web-file").toFile()
+        try {
+            val file = File(root, "upload/fixture.txt").apply {
+                parentFile!!.mkdirs()
+                writeText("fixture")
+            }
+
+            assertEquals(file.canonicalFile, resolveManagedWebFileById(root, managedFile("upload/fixture.txt")))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `unregistered internal file is never web readable`() {
         val root = Files.createTempDirectory("managed-web-file").toFile()
         try {
@@ -51,6 +66,7 @@ class ManagedWebFileAccessTest {
                     managedFile("upload/missing.txt"),
                 )
             )
+            assertNull(resolveManagedWebFileById(root, managedFile("upload/missing.txt")))
         } finally {
             root.deleteRecursively()
         }
@@ -63,18 +79,22 @@ class ManagedWebFileAccessTest {
         val outside = File(parent, "outside.txt").apply { writeText("outside") }
         try {
             val relativePath = "../${outside.name}"
-            assertNull(resolveManagedWebFile(root, relativePath, managedFile(relativePath)))
+            val entity = managedFile(relativePath)
+            assertNull(resolveManagedWebFile(root, relativePath, entity))
+            assertNull(resolveManagedWebFileById(root, entity))
         } finally {
             parent.deleteRecursively()
         }
     }
 
     @Test
-    fun `absolute managed path is rejected`() {
+    fun `absolute managed path is rejected for both path and id access`() {
         val root = Files.createTempDirectory("managed-web-file").toFile()
         try {
-            val absolute = File(root, "fixture.txt").absolutePath
-            assertNull(resolveManagedWebFile(root, absolute, managedFile(absolute)))
+            val absolute = File(root, "fixture.txt").apply { writeText("fixture") }.absolutePath
+            val entity = managedFile(absolute)
+            assertNull(resolveManagedWebFile(root, absolute, entity))
+            assertNull(resolveManagedWebFileById(root, entity))
         } finally {
             root.deleteRecursively()
         }
