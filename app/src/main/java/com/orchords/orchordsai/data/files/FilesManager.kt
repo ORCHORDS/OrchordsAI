@@ -99,8 +99,11 @@ class FilesManager(
 
     suspend fun getByRelativePath(relativePath: String): ManagedFileEntity? = repository.getByPath(relativePath)
 
+    fun getFileOrNull(entity: ManagedFileEntity): File? =
+        resolveManagedFilePath(context.filesDir, entity.relativePath)
+
     fun getFile(entity: ManagedFileEntity): File =
-        File(context.filesDir, entity.relativePath)
+        requireNotNull(getFileOrNull(entity)) { "Invalid managed file path" }
 
     fun createChatFilesByContents(uris: List<Uri>): List<Uri> {
         val newUris = mutableListOf<Uri>()
@@ -359,8 +362,11 @@ class FilesManager(
 
         var removed = 0
         repository.listByFolder(folder).first().forEach { entity ->
-            if (entity.relativePath !in diskRelativePaths && !getFile(entity).isFile) {
-                removed += repository.deleteByPath(entity.relativePath)
+            if (entity.relativePath !in diskRelativePaths) {
+                val file = getFileOrNull(entity)
+                if (file != null && !file.isFile) {
+                    removed += repository.deleteByPath(entity.relativePath)
+                }
             }
         }
 
@@ -370,7 +376,11 @@ class FilesManager(
     suspend fun delete(id: Long, deleteFromDisk: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         val entity = repository.getById(id) ?: return@withContext false
         if (deleteFromDisk) {
-            runCatching { getFile(entity).delete() }
+            val file = getFileOrNull(entity)
+            if (file != null && file.exists()) {
+                val deleted = runCatching { file.delete() }.getOrDefault(false)
+                if (!deleted) return@withContext false
+            }
         }
         repository.deleteById(id) > 0
     }
@@ -395,7 +405,8 @@ class FilesManager(
         }
 
         repository.listByFolder(folder).first().forEach { entity ->
-            if (!getFile(entity).exists()) {
+            val file = getFileOrNull(entity)
+            if (file == null || !file.exists()) {
                 repository.deleteById(entity.id)
             }
         }
@@ -410,8 +421,8 @@ class FilesManager(
         repository.listByFolder(folder).first()
             .filter { it.createdAt < cutoffMillis }
             .forEach { entity ->
-                val file = getFile(entity)
-                val deletedFromDisk = !file.exists() || runCatching {
+                val file = getFileOrNull(entity)
+                val deletedFromDisk = file == null || !file.exists() || runCatching {
                     file.deleteRecursively()
                 }.getOrDefault(false)
 

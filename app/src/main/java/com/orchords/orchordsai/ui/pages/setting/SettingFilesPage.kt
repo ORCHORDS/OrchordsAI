@@ -214,7 +214,7 @@ fun SettingFilesPage(
                     items(files, key = { it.id }) { file ->
                         FileItem(
                             file = file,
-                            fileOnDisk = filesManager.getFile(file),
+                            fileOnDisk = filesManager.getFileOrNull(file),
                             onDelete = { pendingDelete = file }
                         )
                     }
@@ -320,7 +320,7 @@ private fun folderDisplayName(folder: String): String = when (folder) {
 @Composable
 private fun FileItem(
     file: ManagedFileEntity,
-    fileOnDisk: File,
+    fileOnDisk: File?,
     onDelete: () -> Unit,
 ) {
     Card(
@@ -331,7 +331,7 @@ private fun FileItem(
             Box(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (file.mimeType.startsWith("image/")) {
+                if (file.mimeType.startsWith("image/") && fileOnDisk != null) {
                     AsyncImage(
                         model = fileOnDisk,
                         contentDescription = file.displayName,

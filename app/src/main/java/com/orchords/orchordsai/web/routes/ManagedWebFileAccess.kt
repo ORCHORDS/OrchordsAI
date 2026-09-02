@@ -1,6 +1,7 @@
 package com.orchords.orchordsai.web.routes
 
 import com.orchords.orchordsai.data.db.entity.ManagedFileEntity
+import com.orchords.orchordsai.data.files.resolveManagedFilePath
 import java.io.File
 
 /**
@@ -21,26 +22,12 @@ internal fun resolveManagedWebFile(
 /**
  * Resolves a managed-file record for ID-based Web download without trusting persisted relativePath
  * as filesystem authority. Backup/import/corruption can make a database row stale or malicious, so
- * every dereference must re-check absolute-path forms and canonical containment at read time.
+ * every dereference shares the canonical managed-file path policy before bytes are served.
  */
 internal fun resolveManagedWebFileById(
     filesDir: File,
     managedFile: ManagedFileEntity?,
 ): File? {
     val relativePath = managedFile?.relativePath ?: return null
-    if (relativePath.contains('\u0000')) return null
-    if (
-        File(relativePath).isAbsolute ||
-        relativePath.startsWith('/') ||
-        relativePath.startsWith("\\\\") ||
-        Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(relativePath)
-    ) return null
-
-    val root = filesDir.canonicalFile
-    val target = File(root, relativePath).canonicalFile
-    val rootPath = root.path
-    val targetPath = target.path
-    val isContained = targetPath == rootPath || targetPath.startsWith(rootPath + File.separator)
-
-    return target.takeIf { isContained && it.isFile }
+    return resolveManagedFilePath(filesDir, relativePath)?.takeIf { it.isFile }
 }
