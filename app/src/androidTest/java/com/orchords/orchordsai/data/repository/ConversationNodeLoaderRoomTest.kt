@@ -46,42 +46,88 @@ class ConversationNodeLoaderRoomTest {
 
     @Test
     fun malformedRowIsIsolatedWithoutDeletingHealthyPersistedNeighbors() = runBlocking {
-        val dao = database.messageNodeDao()
-        val rows = (0 until 150).map { index ->
-            MessageNodeEntity(
-                id = nodeId(index),
-                conversationId = CONVERSATION_ID,
-                nodeIndex = index,
-                messages = if (index == BAD_INDEX) "[{broken" else "[]",
-                selectIndex = 0,
-            )
-        }
-        dao.insertAll(rows)
+        val rows = insertRows(corruptIndices = setOf(64))
 
         val result = loadConversationNodesSafely(
-            messageNodeDAO = dao,
+            messageNodeDAO = database.messageNodeDao(),
             conversationId = CONVERSATION_ID,
             favoriteNodeIds = emptySet(),
         )
 
-        assertEquals(ConversationLoadState.PARTIAL, result.loadState)
-        assertEquals(setOf(nodeId(BAD_INDEX)), result.corruptNodeIds)
-        assertEquals(149, result.nodes.size)
-        assertEquals(
-            rows.filterNot { it.nodeIndex == BAD_INDEX }.map { it.id },
-            result.nodes.map { it.id.toString() },
+        assertPartialRowsPreserved(rows, corruptIndices = setOf(64), result = result)
+    }
+
+    @Test
+    fun malformedRowsAcrossPageBoundaryAreIsolatedWithoutDeletingPersistedRows() = runBlocking {
+        val corruptIndices = setOf(63, 64, 129)
+        val rows = insertRows(corruptIndices)
+
+        val result = loadConversationNodesSafely(
+            messageNodeDAO = database.messageNodeDao(),
+            conversationId = CONVERSATION_ID,
+            favoriteNodeIds = emptySet(),
         )
 
-        assertEquals(150, dao.countNodesOfConversation(CONVERSATION_ID))
-        assertTrue(dao.getNodeById(nodeId(BAD_INDEX)) != null)
+        assertPartialRowsPreserved(rows, corruptIndices, result)
+    }
+
+    @Test
+    fun healthyRoomConversationRemainsCompleteAndOrdered() = runBlocking {
+        val rows = insertRows(corruptIndices = emptySet())
+
+        val result = loadConversationNodesSafely(
+            messageNodeDAO = database.messageNodeDao(),
+            conversationId = CONVERSATION_ID,
+            favoriteNodeIds = emptySet(),
+        )
+
+        assertEquals(ConversationLoadState.COMPLETE, result.loadState)
+        assertTrue(result.corruptNodeIds.isEmpty())
+        assertEquals(rows.map { it.id }, result.nodes.map { it.id.toString() })
+        assertEquals(rows.size, database.messageNodeDao().countNodesOfConversation(CONVERSATION_ID))
+    }
+
+    private suspend fun insertRows(corruptIndices: Set<Int>): List<MessageNodeEntity> {
+        val rows = (0 until ROW_COUNT).map { index ->
+            MessageNodeEntity(
+                id = nodeId(index),
+                conversationId = CONVERSATION_ID,
+                nodeIndex = index,
+                messages = if (index in corruptIndices) "[{broken" else "[]",
+                selectIndex = 0,
+            )
+        }
+        database.messageNodeDao().insertAll(rows)
+        return rows
+    }
+
+    private suspend fun assertPartialRowsPreserved(
+        rows: List<MessageNodeEntity>,
+        corruptIndices: Set<Int>,
+        result: MessageNodeLoadResult,
+    ) {
+        val corruptIds = corruptIndices.mapTo(linkedSetOf()) { nodeId(it) }
+        val dao = database.messageNodeDao()
+
+        assertEquals(ConversationLoadState.PARTIAL, result.loadState)
+        assertEquals(corruptIds, result.corruptNodeIds)
+        assertEquals(rows.size - corruptIndices.size, result.nodes.size)
+        assertEquals(
+            rows.filterNot { it.nodeIndex in corruptIndices }.map { it.id },
+            result.nodes.map { it.id.toString() },
+        )
+        assertEquals(rows.size, dao.countNodesOfConversation(CONVERSATION_ID))
+        corruptIds.forEach { corruptId ->
+            assertTrue(dao.getNodeById(corruptId) != null)
+        }
     }
 
     private fun nodeId(index: Int): String =
         "00000000-0000-0000-0000-${index.toString().padStart(12, '0')}"
 
     companion object {
+        private const val ROW_COUNT = 150
         private const val CONVERSATION_ID = "00000000-0000-0000-0000-000000000255"
         private const val ASSISTANT_ID = "0950e2dc-9bd5-4801-afa3-aa887aa36b4e"
-        private const val BAD_INDEX = 64
     }
 }
