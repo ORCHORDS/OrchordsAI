@@ -65,6 +65,19 @@ class ConversationRepository(
         pagingSourceFactory = { conversationDAO.getConversationsOfFolderPaging(folderId.toString()) }
     ).flow.map { data -> data.map(::conversationSummaryToConversation) }
 
+    fun getConversationsOfFolderOfAssistantPaging(
+        assistantId: Uuid,
+        folderId: Uuid,
+    ): Flow<PagingData<Conversation>> = Pager(
+        PagingConfig(PAGE_SIZE, initialLoadSize = INITIAL_LOAD_SIZE, enablePlaceholders = false),
+        pagingSourceFactory = {
+            conversationDAO.getConversationsOfFolderOfAssistantPaging(
+                assistantId = assistantId.toString(),
+                folderId = folderId.toString(),
+            )
+        }
+    ).flow.map { data -> data.map(::conversationSummaryToConversation) }
+
     suspend fun getConversationsOfAssistantPage(assistantId: Uuid, offset: Int, limit: Int): ConversationPageResult =
         loadConversationPage(conversationDAO.getConversationsOfAssistantPaging(assistantId.toString()), offset, limit)
 
@@ -87,6 +100,20 @@ class ConversationRepository(
 
     suspend fun getConversationsOfFolderPage(folderId: Uuid, offset: Int, limit: Int): ConversationPageResult =
         loadConversationPage(conversationDAO.getConversationsOfFolderPaging(folderId.toString()), offset, limit)
+
+    suspend fun getConversationsOfFolderOfAssistantPage(
+        assistantId: Uuid,
+        folderId: Uuid,
+        offset: Int,
+        limit: Int,
+    ): ConversationPageResult = loadConversationPage(
+        conversationDAO.getConversationsOfFolderOfAssistantPaging(
+            assistantId = assistantId.toString(),
+            folderId = folderId.toString(),
+        ),
+        offset,
+        limit,
+    )
 
     private suspend fun loadConversationPage(
         pagingSource: PagingSource<Int, LightConversationEntity>,

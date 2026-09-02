@@ -60,7 +60,10 @@ class ChatDrawerVM(
                 if (folderId == null) {
                     conversationRepo.getUnfiledConversationsOfAssistantPaging(assistantId)
                 } else {
-                    conversationRepo.getConversationsOfFolderPaging(folderId)
+                    conversationRepo.getConversationsOfFolderOfAssistantPaging(
+                        assistantId = assistantId,
+                        folderId = folderId,
+                    )
                 }
             }
             .map { pagingData ->
