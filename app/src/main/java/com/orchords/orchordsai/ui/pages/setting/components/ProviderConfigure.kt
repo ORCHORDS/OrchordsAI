@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
 import com.orchords.ai.provider.ClaudePromptCacheTtl
 import com.orchords.ai.provider.ProviderSetting
+import com.orchords.ai.provider.StreamingUsageMode
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.data.datastore.DEFAULT_PROVIDERS
 import me.orchid.hugeicons.HugeIcons
@@ -287,6 +288,26 @@ private fun ProviderConfigureOpenAI(
             checked = provider.includeHistoryReasoning,
             onCheckedChange = { onEdit(provider.copy(includeHistoryReasoning = it)) }
         )
+    }
+
+    Text(stringResource(R.string.setting_provider_page_streaming_usage_mode))
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        StreamingUsageMode.entries.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = provider.streamingUsageMode == mode,
+                onClick = { onEdit(provider.copy(streamingUsageMode = mode)) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = StreamingUsageMode.entries.size),
+                label = {
+                    Text(
+                        when (mode) {
+                            StreamingUsageMode.AUTO -> stringResource(R.string.setting_provider_page_streaming_usage_mode_auto)
+                            StreamingUsageMode.ENABLED -> stringResource(R.string.setting_provider_page_streaming_usage_mode_enabled)
+                            StreamingUsageMode.DISABLED -> stringResource(R.string.setting_provider_page_streaming_usage_mode_disabled)
+                        }
+                    )
+                }
+            )
+        }
     }
 }
 
