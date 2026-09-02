@@ -19,11 +19,13 @@ permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  queue: single
-  # PRs: newest analysis replaces the running one for fast feedback. Main and
-  # merge_group: serialize so the required check reports for that exact SHA
-  # and queued runs don't race on the shared Gradle/CodeQL Actions caches.
-  # Pattern from ORCHORDS/W.A.S.P ci.yml; queue semantics per GitHub's
+  # PRs: newest analysis replaces the running one for fast feedback. Pushes
+  # to main no longer queue: a running analysis finishes and a newer push
+  # only replaces still-pending ones. queue: single serialized main bursts
+  # behind up to 9 minutes of waiting (f39a3277: created 18:28:56, started
+  # 18:37:55) with no remaining benefit once every leg moved off the shared
+  # a1 workspace onto ephemeral hosted runners with per-run caches.
+  # Behavior matches GitHub's CodeQL starter workflow; semantics per the
   # "Control the concurrency of workflows and jobs" documentation.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
