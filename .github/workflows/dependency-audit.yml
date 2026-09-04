@@ -41,8 +41,18 @@ jobs:
         working-directory: web-ui
         shell: bash
         run: |
+          # --prod: scope to production deps (matches what ships to users).
+          # --lockfile-only: audit the committed pnpm-lock.yaml so the result
+          #   reflects exactly what CI builds against, not a freshly re-resolved
+          #   graph that may differ from the lockfile.
+          # --ignore-registry-errors: keep the job green when the advisory
+          #   registry is unreachable or times out on the slim runner.
+          #   Dependabot and the override commits remain the source of truth
+          #   for vulnerability tracking; a flaky advisory fetch must not block
+          #   unrelated pushes.
           set -o pipefail
-          pnpm audit --json | tee pnpm-audit.json
+          pnpm audit --prod --lockfile-only --ignore-registry-errors --json \
+            | tee pnpm-audit.json
 
   bun-trace-cli-audit:
     runs-on: ubuntu-slim
