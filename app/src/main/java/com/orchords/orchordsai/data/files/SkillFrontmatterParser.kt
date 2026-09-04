@@ -51,6 +51,25 @@ class SkillFrontmatter internal constructor(
 ) {
     operator fun get(key: String): String? = values[key] as? String
 
+    /**
+     * Read a boolean frontmatter field by [key].
+     *
+     * The Agent Skills convention (see code.claude.com docs and the
+     * agentskills.io proposal tracking disable-model-invocation) accepts the
+     * values Claude Code emits: `true` / `false`. We additionally tolerate the
+     * YAML-emitted forms `True` / `False` and `TRUE` / `FALSE`, as well as the
+     * quoted strings `"true"` / `"false"`, since frontmatter parsers across
+     * editors routinely coerce case or stringify booleans.
+     */
+    fun getBoolean(key: String): Boolean? {
+        return when (val raw = values[key]) {
+            is Boolean -> raw
+            is String -> raw.trim().lowercase().toBooleanStrictOrNull()
+                ?: return null
+            else -> null
+        }
+    }
+
     companion object {
         internal val Empty = SkillFrontmatter(emptyMap())
     }
