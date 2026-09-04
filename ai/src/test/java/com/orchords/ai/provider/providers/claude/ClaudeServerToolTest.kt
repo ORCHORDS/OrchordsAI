@@ -12,8 +12,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import com.orchords.ai.core.MessageRole
 import com.orchords.ai.core.TokenUsage
+import com.orchords.ai.core.Tool
+import com.orchords.ai.core.InputSchema
 import com.orchords.ai.provider.BuiltInTools
 import com.orchords.ai.provider.Model
+import com.orchords.ai.provider.ModelAbility
 import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
@@ -249,6 +252,61 @@ class ClaudeServerToolTest {
         val tool = body["tools"]?.jsonArray?.single()?.jsonObject
         assertEquals("web_search_20250305", tool?.get("type")?.jsonPrimitive?.content)
         assertEquals("web_search", tool?.get("name")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `Claude-compatible custom route should suppress native web_search_20250305`() {
+        val body = buildRequest(
+            providerSetting = ProviderSetting.Claude(baseUrl = "https://relay.example.com/v1"),
+            messages = listOf(UIMessage.user("search")),
+            params = TextGenerationParams(model = Model(
+                modelId = "claude-test",
+                tools = setOf(BuiltInTools.Search),
+            )),
+        )
+
+        val tools = body["tools"]?.jsonArray
+        assertTrue(
+            "expected no native server tool on a Claude-compatible route, got: $tools",
+            tools.isNullOrEmpty() ||
+                tools.none { it.jsonObject["type"]?.jsonPrimitive?.content == "web_search_20250305" },
+        )
+    }
+
+    @Test
+    fun `Claude-compatible custom route still emits function-calling tools`() {
+        val functionTool = Tool(
+            name = "lookup",
+            description = "lookup",
+            parameters = {
+                InputSchema.Obj(properties = kotlinx.serialization.json.buildJsonObject {})
+            },
+            execute = { emptyList() },
+        )
+        val body = buildRequest(
+            providerSetting = ProviderSetting.Claude(baseUrl = "https://relay.example.com/v1"),
+            messages = listOf(UIMessage.user("search")),
+            params = TextGenerationParams(
+                model = Model(
+                    modelId = "claude-test",
+                    abilities = listOf(ModelAbility.TOOL),
+                    tools = setOf(BuiltInTools.Search),
+                ),
+                tools = listOf(functionTool),
+            ),
+        )
+
+        val tools = body["tools"]?.jsonArray
+        assertTrue("expected the function-calling tool to be emitted", tools?.isNotEmpty() == true)
+        val names = tools?.map { it.jsonObject["name"]?.jsonPrimitive?.content }
+        assertTrue(
+            "lookup tool should still appear on a Claude-compatible route: $names",
+            names?.contains("lookup") == true,
+        )
+        assertTrue(
+            "native server tool must not appear on a Claude-compatible route: $names",
+            names?.none { it == "web_search" } != false,
+        )
     }
 
     @Test

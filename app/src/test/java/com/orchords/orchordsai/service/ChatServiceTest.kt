@@ -6,6 +6,7 @@ import com.orchords.ai.provider.BuiltInTools
 import com.orchords.ai.provider.CustomBody
 import com.orchords.ai.provider.CustomHeader
 import com.orchords.ai.provider.Model
+import com.orchords.ai.provider.ProviderSetting
 import com.orchords.orchordsai.data.model.Assistant
 import com.orchords.orchordsai.data.model.Conversation
 import org.junit.Assert.assertEquals
@@ -59,7 +60,7 @@ class ChatServiceTest {
         val assistant = Assistant(enableWebSearch = false)
         val model = Model()
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(shouldUseExternalWebSearch(assistant, model, providerSetting = null))
     }
 
     @Test
@@ -67,7 +68,7 @@ class ChatServiceTest {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model()
 
-        assertTrue(shouldUseExternalWebSearch(assistant, model))
+        assertTrue(shouldUseExternalWebSearch(assistant, model, providerSetting = null))
     }
 
     @Test
@@ -75,7 +76,13 @@ class ChatServiceTest {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model(tools = setOf(BuiltInTools.Search))
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(
+            shouldUseExternalWebSearch(
+                assistant,
+                model,
+                providerSetting = ProviderSetting.Claude(),
+            ),
+        )
     }
 
     @Test
@@ -83,7 +90,13 @@ class ChatServiceTest {
         val assistant = Assistant(enableWebSearch = false)
         val model = Model(tools = setOf(BuiltInTools.Search))
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(
+            shouldUseExternalWebSearch(
+                assistant,
+                model,
+                providerSetting = ProviderSetting.Claude(),
+            ),
+        )
     }
 
     @Test
@@ -91,6 +104,52 @@ class ChatServiceTest {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model(tools = setOf(BuiltInTools.UrlContext))
 
-        assertTrue(shouldUseExternalWebSearch(assistant, model))
+        assertTrue(shouldUseExternalWebSearch(assistant, model, providerSetting = null))
+    }
+
+    @Test
+    fun `external web search fallback engages on Claude-compatible route even when model claims BuiltInTools Search`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.Search))
+        val provider = ProviderSetting.Claude(
+            baseUrl = "https://relay.example.com/v1",
+        )
+
+        assertTrue(shouldUseExternalWebSearch(assistant, model, providerSetting = provider))
+    }
+
+    @Test
+    fun `external web search stays disabled on native Anthropic route when model claims BuiltInTools Search`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.Search))
+
+        assertFalse(
+            shouldUseExternalWebSearch(
+                assistant,
+                model,
+                providerSetting = ProviderSetting.Claude(),
+            ),
+        )
+    }
+
+    @Test
+    fun `external web search stays disabled for non-Claude providers when model claims BuiltInTools Search`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.Search))
+
+        assertFalse(
+            shouldUseExternalWebSearch(
+                assistant,
+                model,
+                providerSetting = ProviderSetting.OpenAI(),
+            ),
+        )
+        assertFalse(
+            shouldUseExternalWebSearch(
+                assistant,
+                model,
+                providerSetting = ProviderSetting.Google(),
+            ),
+        )
     }
 }

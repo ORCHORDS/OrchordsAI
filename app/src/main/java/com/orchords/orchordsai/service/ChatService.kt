@@ -36,6 +36,8 @@ import com.orchords.ai.provider.BuiltInTools
 import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
 import com.orchords.ai.provider.ProviderManager
+import com.orchords.ai.provider.ProviderSetting
+import com.orchords.ai.provider.providers.claude.isAnthropicNativeHost
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.ui.ToolApprovalState
 import com.orchords.ai.ui.UIMessage
@@ -108,8 +110,22 @@ internal fun backgroundTextGenerationParams(
     customBody = model.customBodies,
 )
 
-internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
-    return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
+internal fun shouldUseExternalWebSearch(
+    assistant: Assistant,
+    model: Model,
+    providerSetting: ProviderSetting?,
+): Boolean {
+    if (!assistant.enableWebSearch) return false
+    if (BuiltInTools.Search !in model.tools) return true
+    // Capability gate (issue #360): when the model claims native Anthropic
+    // search, the client-side fallback can still rescue the feature on a
+    // Claude-compatible third-party gateway that rejects `web_search_20250305`.
+    // The provider's own emission is gated on `isAnthropicNativeHost()`, so
+    // here we mirror that: on a non-Anthropic Claude route, fall through to
+    // the client-side search tool. Non-Claude providers continue to use
+    // whatever the provider already supports.
+    return providerSetting is ProviderSetting.Claude &&
+        !providerSetting.baseUrl.isAnthropicNativeHost()
 }
 
 internal fun createForkConversation(
@@ -547,7 +563,8 @@ class ChatService(
         } else {
             model.displayName
         }
-        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+        val provider = model.findProvider(settings.providers) ?: return
+        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model, provider)
 
         var chunksSinceCheckpoint = 0
         runCatching {

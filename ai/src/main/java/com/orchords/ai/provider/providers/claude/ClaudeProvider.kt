@@ -499,9 +499,18 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                         })
                     }
                 }
+                // Capability gate (issue #360): native Anthropic server tools
+                // (e.g. `web_search_20250305`) are only implemented by Anthropic's
+                // own infrastructure. Claude-compatible third-party gateways
+                // (OpenRouter-style relays, in-house proxies) speak the same
+                // `/v1/messages` wire format but reject these tools, silently
+                // dropping web search. Emit them only when the effective route
+                // targets Anthropic's official host; other branches stay intact.
+                val emitNativeSearch = BuiltInTools.Search in params.model.tools &&
+                    providerSetting.baseUrl.isAnthropicNativeHost()
                 params.model.tools.forEach { builtInTool ->
                     when (builtInTool) {
-                        BuiltInTools.Search -> add(buildJsonObject {
+                        BuiltInTools.Search -> if (emitNativeSearch) add(buildJsonObject {
                             put("type", "web_search_20250305")
                             put("name", "web_search")
                         })
