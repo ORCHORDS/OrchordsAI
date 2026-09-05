@@ -51,6 +51,9 @@ fun ExtensionsPage() {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item(key = "built-in-library") {
+                BuiltInLibraryPanel(Modifier.padding(horizontal = 8.dp))
+            }
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),

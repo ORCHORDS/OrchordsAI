@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_install_title">Built-in library</string>
+    <string name="library_install_inventory">%1$d modes · %2$d lorebooks · %3$d skills available to install</string>
+    <string name="library_install_selection_notice">Install missing definitions without replacing your edits. Then choose the modes, lorebooks and skills for each assistant. Installation does not connect accounts or enable tools.</string>
+    <string name="library_install_missing">Install missing library content</string>
+    <string name="library_install_result">Added %1$d modes, %2$d lorebooks and %3$d skills. Preserved %4$d existing skill folders.</string>
+    <string name="library_install_partial">Some skills could not be installed: %1$s. Existing content was preserved. Check storage and retry to install only the missing items.</string>
+    <string name="library_install_failed">Library installation could not finish. No account permissions were changed. Check storage or existing library data, then retry; already installed content is preserved.</string>
+    <string name="library_open_prompts">Inspect modes and lorebooks</string>
+    <string name="library_open_skills">Inspect installed skills</string>
+    <string name="library_open_assistants">Choose content and tools per assistant</string>
+    <string name="library_open_mcp">Configure MCP connections</string>
+    <string name="tool_setup_title">Tool setup for the selected assistant</string>
+    <string name="tool_setup_initializing">Settings are still loading.</string>
+    <string name="tool_setup_automatic">Automatic routing is selected. Tool compatibility must be checked on the resolved provider route, not assumed from this selection.</string>
+    <string name="tool_setup_no_model">The selected model is missing. Choose a configured chat model in Settings.</string>
+    <string name="tool_setup_not_marked">This model is not marked for native tool calling. Verify provider support in its model settings; adding a skill cannot add tool support to a provider.</string>
+    <string name="tool_setup_marked">Native tool calling is enabled in model metadata. The actual provider route, connection and action permissions still need to pass runtime checks.</string>
+    <string name="tool_setup_counts">%1$d enabled MCP servers assigned to this assistant; %2$d enabled tools in their cached discovery records. These counts do not prove a live connection. Configure and synchronize the server, then select it for this assistant.</string>
+    <string name="tool_setup_settings">Open model and provider settings</string>
+</resources>
