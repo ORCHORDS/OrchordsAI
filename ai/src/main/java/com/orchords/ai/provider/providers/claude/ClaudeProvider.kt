@@ -42,6 +42,7 @@ import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.resolveRouteCapabilities
+import com.orchords.ai.provider.resolveToolBudget
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
 import com.orchords.ai.provider.stream.SseEvent
@@ -496,7 +497,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()
             val toolDefinitions = buildList {
                 if (useFunctionTools) {
-                    params.tools.forEach { tool ->
+                    resolveToolBudget(params.tools, messages, providerSetting).forEach { tool ->
                         add(buildJsonObject {
                             put("name", tool.name)
                             put("description", tool.description)

@@ -39,6 +39,7 @@ import com.orchords.ai.provider.StreamingUsageMode
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.resolveRouteCapabilities
+import com.orchords.ai.provider.resolveToolBudget
 import com.orchords.ai.provider.stream.SseEvent
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
@@ -418,7 +419,7 @@ class ChatCompletionsAPI(
 
             if (params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()) {
                 putJsonArray("tools") {
-                    params.tools.forEach { tool ->
+                    resolveToolBudget(params.tools, messages, providerSetting).forEach { tool ->
                         add(buildJsonObject {
                             put("type", "function")
                             put("function", buildJsonObject {

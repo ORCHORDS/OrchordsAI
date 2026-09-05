@@ -39,6 +39,7 @@ import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.resolveRouteCapabilities
+import com.orchords.ai.provider.resolveToolBudget
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.google.vertex.ServiceAccountTokenProvider
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
@@ -401,7 +402,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 if (useFunctionTools) {
                     add(buildJsonObject {
                         putJsonArray("functionDeclarations") {
-                            params.tools.forEach { tool ->
+                            resolveToolBudget(params.tools, messages, providerSetting).forEach { tool ->
                                 add(buildJsonObject {
                                     put("name", JsonPrimitive(tool.name))
                                     put("description", JsonPrimitive(tool.description))
