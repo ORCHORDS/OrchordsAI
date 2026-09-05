@@ -117,29 +117,29 @@ class LoaderBrandingPolicyTest {
     }
 
     @Test
-    fun `startup loader shows the wordmark first and fades the dragon in after`() {
+    fun `startup loader separates brand bounds and follows readiness instead of decoration timers`() {
         val startup = source("src/main/java/com/orchords/orchordsai/ui/components/ui/OrchordsStartupLoading.kt")
-        val dragonEnter = startup.indexOf("dragonAlpha.animateTo(1f")
-        val wordmarkExit = startup.indexOf("wordmarkAlpha.animateTo(0f")
-        val dragonExit = startup.indexOf("dragonAlpha.animateTo(0f")
-        val finished = startup.indexOf("onFinished()")
         assertTrue(
-            "One coroutine must own dragon entry, wordmark exit, dragon exit, then main-window reveal",
-            dragonEnter >= 0 && dragonEnter < wordmarkExit && wordmarkExit < dragonExit && dragonExit < finished,
+            "Completion must depend on real readiness and a rendered frame, not animation duration",
+            startup.contains("startupCanFinish(") &&
+                startup.contains("withFrameNanos { }") &&
+                startup.contains("settingsInitializing = settings.init") &&
+                startup.contains("migrationActive = migration != null") &&
+                startup.contains("persistent = detail != null"),
         )
         assertTrue(
-            "Image 1 starts visible and image 2 starts invisible",
-            startup.contains("wordmarkAlpha = remember { Animatable(1f) }") &&
-                startup.contains("dragonAlpha = remember { Animatable(0f) }"),
+            "Both supplied transparent images must occupy non-overlapping Column bounds",
+            startup.contains("Column(") &&
+                startup.contains("R.drawable.orchords_wordmark_blue") &&
+                startup.contains("R.drawable.orchords_logo_blue") &&
+                !startup.contains("Animatable") && !startup.contains("animateTo(") &&
+                !startup.contains("delay("),
         )
         assertTrue(
-            "Entrance sequence must be gated on the first rendered frame (withFrameNanos) so slow cold starts cannot consume it invisibly",
-            startup.contains("withFrameNanos { }"),
-        )
-        assertTrue(
-            "Both supplied transparent image resources must be used",
-            startup.contains("R.drawable.orchords_wordmark_blue") &&
-                startup.contains("R.drawable.orchords_logo_blue"),
+            "Migration status stays rendered and completion uses the latest callback",
+            startup.contains("text = status") &&
+                startup.contains("rememberUpdatedState(onFinished)") &&
+                !startup.contains("UNUSED_VARIABLE"),
         )
     }
 
@@ -168,7 +168,7 @@ class LoaderBrandingPolicyTest {
             activity.indexOf("installSplashScreen()") in 0 until activity.indexOf("super.onCreate(savedInstanceState)"),
         )
         assertTrue(
-            "Normal cold starts must hand off to the app-rendered wordmark-first and dragon-second overlay",
+            "Cold starts retain the branded host and its readiness completion callback",
             activity.contains("mutableStateOf(savedInstanceState == null)") &&
                 activity.contains("OrchardsStartupLoadingIndicator(") &&
                 activity.contains("onFinished = { showStartup = false }"),

@@ -35,6 +35,8 @@ import com.orchords.asr.ASRProviderSetting
 import com.orchords.orchordsai.data.datastore.migration.PreferenceStoreV1Migration
 import com.orchords.orchordsai.data.datastore.migration.PreferenceStoreV2Migration
 import com.orchords.orchordsai.data.datastore.migration.PreferenceStoreV3Migration
+import com.orchords.orchordsai.data.extensions.toModeInjection
+import com.orchords.orchordsai.data.extensions.toLorebook
 import com.orchords.orchordsai.data.model.Assistant
 import com.orchords.orchordsai.data.model.Avatar
 import com.orchords.orchordsai.data.model.InjectionPosition
@@ -329,6 +331,17 @@ class SettingsStore(
     val settingsFlow = settingsFlowRaw
         .distinctUntilChanged()
         .toMutableStateFlow(scope, Settings.dummy())
+
+    /** Explicit installation only: preserve edits, selections, credentials and unrelated keys. */
+    suspend fun installBuiltInLibraryContent(): LibraryContentReceipt {
+        check(!settingsFlow.value.init) { "Settings have not finished loading" }
+        val catalog = com.orchords.orchordsai.data.extensions.BuiltInLibrary.catalog
+        return appendLibraryContent(
+            dataStore,
+            catalog.modes.map { it.toModeInjection() },
+            catalog.lorebooks.map { it.toLorebook() },
+        )
+    }
 
     suspend fun update(settings: Settings) {
         if(settings.init) {
