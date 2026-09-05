@@ -26,15 +26,14 @@ import com.orchords.ai.core.MessageRole
 import com.orchords.ai.core.ReasoningLevel
 import com.orchords.ai.core.TokenUsage
 import com.orchords.ai.provider.BuiltInTools
-import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
 import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
+import com.orchords.ai.provider.resolveRouteCapabilities
 import com.orchords.ai.provider.stream.SseEvent
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
-import com.orchords.ai.registry.ModelRegistry
 import com.orchords.ai.ui.StreamChunk
 import com.orchords.ai.ui.OpenAIReasoningMetadata
 import com.orchords.ai.ui.ReasoningType
@@ -212,10 +211,12 @@ class ResponseAPI(
             put("stream", stream)
             put("store", false)
 
-            if (isModelAllowTemperature(params.model)) {
-                if (params.temperature != null) put("temperature", params.temperature)
-                if (params.topP != null) put("top_p", params.topP)
-            }
+            val samplingCaps = providerSetting.resolveRouteCapabilities(params.model)
+            if (samplingCaps.supportsTemperature && params.temperature != null) put(
+                "temperature",
+                params.temperature
+            )
+            if (samplingCaps.supportsTopP && params.topP != null) put("top_p", params.topP)
             if (params.maxTokens != null) put("max_output_tokens", params.maxTokens)
 
             // system instructions
@@ -686,10 +687,6 @@ private fun ServerToolStatus.toOpenAIStatus(): String = when (this) {
     ServerToolStatus.IN_PROGRESS -> "in_progress"
     ServerToolStatus.COMPLETED -> "completed"
     ServerToolStatus.FAILED -> "failed"
-}
-
-private fun isModelAllowTemperature(model: Model): Boolean {
-    return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) && !ModelRegistry.GPT_5.match(model.modelId)
 }
 
 private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {

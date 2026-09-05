@@ -15,6 +15,7 @@ import com.orchords.ai.core.Tool
 import com.orchords.ai.provider.BuiltInTools
 import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
+import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.stream.SseEvent
 import com.orchords.ai.ui.ServerToolMetadata
@@ -37,6 +38,7 @@ class GoogleToolCombinationTest {
     @Test
     fun `built-in and function tools enable server-side tool invocations`() {
         val body = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.Google(),
             messages = listOf(UIMessage.user("search and call a tool")),
             params = TextGenerationParams(
                 model = toolModel(tools = setOf(BuiltInTools.Search)),
@@ -57,12 +59,14 @@ class GoogleToolCombinationTest {
     @Test
     fun `single tool category does not enable server-side tool invocations`() {
         val builtInOnly = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.Google(),
             messages = listOf(UIMessage.user("search")),
             params = TextGenerationParams(
                 model = toolModel(tools = setOf(BuiltInTools.Search)),
             ),
         )
         val functionOnly = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.Google(),
             messages = listOf(UIMessage.user("call a tool")),
             params = TextGenerationParams(
                 model = toolModel(),
@@ -162,16 +166,18 @@ class GoogleToolCombinationTest {
     }
 
     private fun invokeBuildRequestBody(
+        providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): JsonObject {
         val method = GoogleProvider::class.java.getDeclaredMethod(
             "buildCompletionRequestBody",
+            ProviderSetting.Google::class.java,
             List::class.java,
             TextGenerationParams::class.java,
         )
         method.isAccessible = true
-        return method.invoke(provider, messages, params) as JsonObject
+        return method.invoke(provider, providerSetting, messages, params) as JsonObject
     }
 
     private fun invokeBuildContents(messages: List<UIMessage>): JsonArray {

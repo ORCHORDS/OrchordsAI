@@ -41,6 +41,7 @@ import com.orchords.ai.provider.Provider
 import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
+import com.orchords.ai.provider.resolveRouteCapabilities
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
 import com.orchords.ai.provider.stream.SseEvent
@@ -437,11 +438,15 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
             }
 
-            if (params.temperature != null && !params.reasoningLevel.isEnabled) put(
-                "temperature",
-                params.temperature
-            )
-            if (params.topP != null) put("top_p", params.topP)
+            // Anthropic accepts temperature/top_p on standard turns but rejects
+            // temperature during extended thinking. The reasoningLevel.isEnabled
+            // guard remains authoritative; the route capability lets users
+            // force-strip on a non-Anthropic Claude-compatible gateway.
+            val samplingCaps = providerSetting.resolveRouteCapabilities(params.model)
+            if (samplingCaps.supportsTemperature && !params.reasoningLevel.isEnabled && params.temperature != null) {
+                put("temperature", params.temperature)
+            }
+            if (samplingCaps.supportsTopP && params.topP != null) put("top_p", params.topP)
 
             put("stream", stream)
 

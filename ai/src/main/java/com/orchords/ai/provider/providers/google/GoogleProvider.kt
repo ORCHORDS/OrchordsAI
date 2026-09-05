@@ -38,6 +38,7 @@ import com.orchords.ai.provider.Provider
 import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
+import com.orchords.ai.provider.resolveRouteCapabilities
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.google.vertex.ServiceAccountTokenProvider
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
@@ -156,7 +157,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
-        val requestBody = buildCompletionRequestBody(messages, params)
+        val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
             providerSetting = providerSetting,
@@ -203,7 +204,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<StreamChunk> = callbackFlow {
-        val requestBody = buildCompletionRequestBody(messages, params)
+        val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
             providerSetting = providerSetting,
@@ -309,6 +310,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     }.buffer(Channel.UNLIMITED)
 
     private fun buildCompletionRequestBody(
+        providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams
     ): JsonObject = buildJsonObject {
@@ -327,10 +329,19 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             })
         }
 
-        // Generation config
+        // Generation config.
+        // Gemini rejects topP when temperature is set
+        // (https://ai.google.dev/api/generate-content). The cross-field
+        // suppression fires only when temperature is actually emitted, and only
+        // when the user has not explicitly opted into topP via supportsTopP.
+        val samplingCaps = providerSetting.resolveRouteCapabilities(params.model)
+        val emitTemperature = samplingCaps.supportsTemperature && params.temperature != null
+        val suppressTopP = params.topP != null &&
+            (emitTemperature || !samplingCaps.supportsTopP) &&
+            providerSetting.supportsTopP == null
         put("generationConfig", buildJsonObject {
-            if (params.temperature != null) put("temperature", params.temperature)
-            if (params.topP != null) put("topP", params.topP)
+            if (emitTemperature) put("temperature", params.temperature)
+            if (!suppressTopP && params.topP != null) put("topP", params.topP)
             if (params.maxTokens != null) put("maxOutputTokens", params.maxTokens)
             if (params.model.outputModalities.contains(Modality.IMAGE)) {
                 put("responseModalities", buildJsonArray {

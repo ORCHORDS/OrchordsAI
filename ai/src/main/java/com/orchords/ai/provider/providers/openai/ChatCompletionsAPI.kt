@@ -38,6 +38,7 @@ import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.StreamingUsageMode
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
+import com.orchords.ai.provider.resolveRouteCapabilities
 import com.orchords.ai.provider.stream.SseEvent
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
@@ -241,10 +242,12 @@ class ChatCompletionsAPI(
                 )
             )
 
-            if (isModelAllowTemperature(params.model)) {
-                if (params.temperature != null) put("temperature", params.temperature)
-                if (params.topP != null) put("top_p", params.topP)
-            }
+            val samplingCaps = providerSetting.resolveRouteCapabilities(params.model)
+            if (samplingCaps.supportsTemperature && params.temperature != null) put(
+                "temperature",
+                params.temperature
+            )
+            if (samplingCaps.supportsTopP && params.topP != null) put("top_p", params.topP)
             if (params.maxTokens != null) {
                 if (isModelRequiresMaxCompletionTokens(params.model)) {
                     put("max_completion_tokens", params.maxTokens)
@@ -434,16 +437,6 @@ class ChatCompletionsAPI(
                 }
             }
         }.mergeCustomBody(params.customBody)
-    }
-
-    private fun isModelAllowTemperature(model: Model): Boolean {
-        val isMoonshotRestricted = ModelRegistry.KIMI_K2_5.match(model.modelId) ||
-                ModelRegistry.KIMI_K2_6.match(model.modelId) ||
-                ModelRegistry.KIMI_K3.match(model.modelId) ||
-                ModelRegistry.KIMI_K3_ALIAS.match(model.modelId)
-        return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) &&
-               !ModelRegistry.GPT_5.match(model.modelId) &&
-               !isMoonshotRestricted
     }
 
     // OpenAI reasoning families reject legacy `max_tokens` with HTTP 400 and require

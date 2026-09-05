@@ -106,6 +106,9 @@ sealed class ProviderSetting {
         var includeHistoryReasoning: Boolean = true,
         var streamingUsageMode: StreamingUsageMode = StreamingUsageMode.AUTO,
         var instructionRoleMode: InstructionRoleMode = InstructionRoleMode.AUTO,
+        // null → defer to the ModelRegistry denylist; non-null → force the choice.
+        var supportsTemperature: Boolean? = null,
+        var supportsTopP: Boolean? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -171,6 +174,11 @@ sealed class ProviderSetting {
         var serviceAccountEmail: String = "", // only for vertex AI service account
         var location: String = "us-central1", // only for vertex AI service account
         var projectId: String = "", // only for vertex AI service account
+        // null → Gemini accepts both; non-null → force the choice.
+        // Cross-field constraint (topP omitted when temperature is set) lives at
+        // the call site; see GoogleProvider.
+        var supportsTemperature: Boolean? = null,
+        var supportsTopP: Boolean? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -232,6 +240,11 @@ sealed class ProviderSetting {
         var baseUrl: String = "https://api.anthropic.com/v1",
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,
+        // null → Anthropic accepts both; non-null → force the choice.
+        // The reasoning-level guard (extended thinking rejects `temperature`)
+        // stays at the call site; see ClaudeProvider.
+        var supportsTemperature: Boolean? = null,
+        var supportsTopP: Boolean? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
