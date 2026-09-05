@@ -4,8 +4,8 @@
 
 # ORCHORDS AI
 
-[![Daily build](https://github.com/ORCHORDS/OrchordsStudioAi/actions/workflows/daily-build.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsStudioAi/actions/workflows/daily-build.yml)
-[![Dependency audit](https://github.com/ORCHORDS/OrchordsStudioAi/actions/workflows/dependency-audit.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsStudioAi/actions/workflows/dependency-audit.yml)
+[![Daily build](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/daily-build.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/daily-build.yml)
+[![Dependency audit](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml/badge.svg)](https://github.com/ORCHORDS/OrchordsAI/actions/workflows/dependency-audit.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 > ⭐ If you like ORCHORDS AI or find it useful, please consider starring this repository. It helps more people discover the project.
@@ -44,8 +44,8 @@ Nightly releases publish SHA-256 checksums and a GitHub/Sigstore SLSA provenance
 ```bash
 sha256sum --check SHA256SUMS
 gh attestation verify ./ORCHORDS-AI.apk \
-  --repo ORCHORDS/OrchordsStudioAi \
-  --signer-workflow ORCHORDS/OrchordsStudioAi/.github/workflows/daily-build.yml \
+  --repo ORCHORDS/OrchordsAI \
+  --signer-workflow ORCHORDS/OrchordsAI/.github/workflows/daily-build.yml \
   --source-ref refs/heads/main
 ```
 
