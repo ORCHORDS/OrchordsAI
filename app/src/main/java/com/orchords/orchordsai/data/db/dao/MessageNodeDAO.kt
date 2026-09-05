@@ -1,5 +1,6 @@
 package com.orchords.orchordsai.data.db.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -10,10 +11,32 @@ import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.orchords.orchordsai.data.db.entity.MessageNodeEntity
 
+/**
+ * Column-projected metadata for a [MessageNodeEntity] row, omitting the (potentially
+ * large) `messages` JSON. Use these for list / count / pagination paths so the
+ * underlying `CursorWindow` only carries a few bytes per row; load the full
+ * JSON lazily through [MessageNodeEntity.messages] / `payload_blob_id`.
+ *
+ * See issue #345.
+ */
+data class MessageNodeMeta(
+    val id: String,
+    @ColumnInfo("conversation_id") val conversationId: String,
+    @ColumnInfo("node_index") val nodeIndex: Int,
+    @ColumnInfo("select_index") val selectIndex: Int,
+    @ColumnInfo("payload_blob_id") val payloadBlobId: Long?,
+)
+
 @Dao
 interface MessageNodeDAO {
     @Query("SELECT * FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC")
     suspend fun getNodesOfConversation(conversationId: String): List<MessageNodeEntity>
+
+    @Query(
+        "SELECT id, conversation_id, node_index, select_index, payload_blob_id " +
+            "FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC"
+    )
+    suspend fun getNodesMetaOfConversation(conversationId: String): List<MessageNodeMeta>
 
     @Query(
         "SELECT * FROM message_node WHERE conversation_id = :conversationId " +
@@ -22,8 +45,19 @@ interface MessageNodeDAO {
     suspend fun getNodesOfConversationPaged(
         conversationId: String,
         limit: Int,
-        offset: Int
+        offset: Int,
     ): List<MessageNodeEntity>
+
+    @Query(
+        "SELECT id, conversation_id, node_index, select_index, payload_blob_id " +
+            "FROM message_node WHERE conversation_id = :conversationId " +
+            "ORDER BY node_index ASC LIMIT :limit OFFSET :offset"
+    )
+    suspend fun getNodesMetaOfConversationPaged(
+        conversationId: String,
+        limit: Int,
+        offset: Int,
+    ): List<MessageNodeMeta>
 
     @Query("SELECT COUNT(*) FROM message_node WHERE conversation_id = :conversationId")
     suspend fun countNodesOfConversation(conversationId: String): Int
@@ -52,7 +86,12 @@ interface MessageNodeDAO {
     @Query("DELETE FROM message_node WHERE id = :nodeId")
     suspend fun deleteById(nodeId: String)
 
-    @Query("SELECT COUNT(*) FROM message_node WHERE json_valid(messages) = 0")
+    /**
+     * Validation count over inline rows only. Externalized rows are validated
+     * lazily when the loader resolves their blob — see
+     * [com.orchords.orchordsai.data.repository.ConversationNodeLoader].
+     */
+    @Query("SELECT COUNT(*) FROM message_node WHERE payload_blob_id IS NULL AND json_valid(messages) = 0")
     suspend fun getInvalidMessageJsonCount(): Int
 
     @RawQuery
@@ -71,15 +110,20 @@ data class MessageTokenStats(
 
 data class MessageDayCount(val day: String, val count: Int)
 
-private const val SAFE_MESSAGES_JSON =
-    "CASE WHEN json_valid(mn.messages) THEN mn.messages ELSE '[]' END"
+/**
+ * SQL aggregate over inline JSON only. Rows that store JSON externally
+ * contribute 0 here; the [com.orchords.orchordsai.data.db.fts.MessageFtsManager]
+ * already handles the full content for search via its own decode path.
+ */
+private const val SAFE_INLINE_MESSAGES_JSON =
+    "CASE WHEN payload_blob_id IS NULL AND json_valid(messages) THEN messages ELSE '[]' END"
 
 private val TOKEN_STATS_SQL = SimpleSQLiteQuery(
     "SELECT COUNT(*) AS totalMessages, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.promptTokens') AS INTEGER)), 0) AS promptTokens, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.completionTokens') AS INTEGER)), 0) AS completionTokens, " +
         "COALESCE(SUM(CAST(json_extract(j.value, '$.usage.cachedTokens') AS INTEGER)), 0) AS cachedTokens " +
-        "FROM message_node mn, json_each($SAFE_MESSAGES_JSON) j"
+        "FROM message_node mn, json_each($SAFE_INLINE_MESSAGES_JSON) j"
 )
 
 suspend fun MessageNodeDAO.getTokenStats(): MessageTokenStats = getTokenStatsRaw(TOKEN_STATS_SQL)
@@ -89,7 +133,7 @@ suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String): List<Messag
         SimpleSQLiteQuery(
             "SELECT substr(json_extract(j.value, '$.createdAt'), 1, 10) AS day, " +
                 "COUNT(*) AS count " +
-                "FROM message_node mn, json_each($SAFE_MESSAGES_JSON) j " +
+                "FROM message_node mn, json_each($SAFE_INLINE_MESSAGES_JSON) j " +
                 "WHERE json_extract(j.value, '$.role') = 'user' " +
                 "AND json_extract(j.value, '$.createdAt') >= ? " +
                 "GROUP BY day",

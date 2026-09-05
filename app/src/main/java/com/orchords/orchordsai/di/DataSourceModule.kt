@@ -29,6 +29,7 @@ import com.orchords.orchordsai.data.db.migrations.Migration_11_12
 import com.orchords.orchordsai.data.db.migrations.Migration_13_14
 import com.orchords.orchordsai.data.db.migrations.Migration_14_15
 import com.orchords.orchordsai.data.db.migrations.Migration_15_16
+import com.orchords.orchordsai.data.db.migrations.Migration_24_25
 import com.orchords.orchordsai.data.ai.mcp.McpManager
 import com.orchords.orchordsai.data.network.SettingsProxySelector
 import com.orchords.orchordsai.data.network.SettingsProxyAuthenticator
@@ -55,7 +56,7 @@ val dataSourceModule = module {
         val context: Context = get()
         Room.databaseBuilder(context, AppDatabase::class.java, APP_DATABASE_NAME)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16)
+            .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16, Migration_24_25)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     val dictDir = SimpleDictManager.extractDict(context)

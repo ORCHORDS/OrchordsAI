@@ -1,6 +1,7 @@
 package com.orchords.orchordsai.di
 
 import android.content.Context
+import com.orchords.orchordsai.data.db.MessageNodePayloadStore
 import com.orchords.orchordsai.data.files.FileFolders
 import com.orchords.orchordsai.data.files.FilesManager
 import com.orchords.orchordsai.data.files.SkillManager
@@ -20,7 +21,11 @@ import java.io.File
 
 val repositoryModule = module {
     single {
-        ConversationRepository(get(), get(), get(), get(), get(), get())
+        MessageNodePayloadStore(filesManager = get(), managedFileDao = get())
+    }
+
+    single {
+        ConversationRepository(get(), get(), get(), get(), get(), get(), get())
     }
 
     single {

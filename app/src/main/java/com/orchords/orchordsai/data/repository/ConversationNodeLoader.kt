@@ -28,6 +28,18 @@ internal data class MessageNodeLoadResult(
         get() = if (corruptNodeIds.isEmpty()) ConversationLoadState.COMPLETE else ConversationLoadState.PARTIAL
 }
 
+/**
+ * Resolves the raw JSON for a row. Returns the inline `messages` column for
+ * small rows; loads from the [com.orchords.orchordsai.data.db.MessageNodePayloadStore]
+ * for externalized payloads. Returning `null` (or throwing outside
+ * [CancellationException]) marks the row as unreadable.
+ *
+ * See issue #345.
+ */
+internal interface ConversationNodePayloadSource {
+    suspend fun resolve(entity: MessageNodeEntity): String?
+}
+
 internal interface ConversationNodeReader {
     suspend fun count(conversationId: String): Int
     suspend fun page(conversationId: String, limit: Int, offset: Int): List<MessageNodeEntity>
@@ -39,6 +51,7 @@ internal suspend fun loadConversationNodesSafely(
     messageNodeDAO: MessageNodeDAO,
     conversationId: String,
     favoriteNodeIds: Set<Uuid>,
+    payloadSource: ConversationNodePayloadSource,
 ): MessageNodeLoadResult = loadConversationNodesSafely(
     reader = object : ConversationNodeReader {
         override suspend fun count(conversationId: String) = messageNodeDAO.countNodesOfConversation(conversationId)
@@ -48,6 +61,7 @@ internal suspend fun loadConversationNodesSafely(
             messageNodeDAO.getNodeIdAtOffset(conversationId, offset)
         override suspend fun nodeById(nodeId: String) = messageNodeDAO.getNodeById(nodeId)
     },
+    payloadSource = payloadSource,
     conversationId = conversationId,
     favoriteNodeIds = favoriteNodeIds,
 )
@@ -56,18 +70,27 @@ internal suspend fun loadConversationNodesSafely(
     reader: ConversationNodeReader,
     conversationId: String,
     favoriteNodeIds: Set<Uuid>,
+    payloadSource: ConversationNodePayloadSource,
 ): MessageNodeLoadResult {
     val nodes = mutableListOf<MessageNode>()
     val corruptNodeIds = linkedSetOf<String>()
     val total = reader.count(conversationId)
     var offset = 0
 
-    fun decode(entity: MessageNodeEntity) {
+    suspend fun decode(entity: MessageNodeEntity) {
         try {
             val nodeId = Uuid.parse(entity.id)
+            val rawJson = payloadSource.resolve(entity)
+                ?: run {
+                    corruptNodeIds += entity.id
+                    logUnreadable(
+                        "Unresolvable message node conversation=$conversationId node=${entity.id} (payload_blob_id=${entity.payloadBlobId})"
+                    )
+                    return
+                }
             nodes += MessageNode(
                 id = nodeId,
-                messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages),
+                messages = JsonInstant.decodeFromString<List<UIMessage>>(rawJson),
                 selectIndex = entity.selectIndex,
                 isFavorite = favoriteNodeIds.contains(nodeId),
             )
@@ -92,7 +115,9 @@ internal suspend fun loadConversationNodesSafely(
 
         if (page != null) {
             if (page.isEmpty()) break
-            page.forEach(::decode)
+            for (entity in page) {
+                decode(entity)
+            }
             offset += page.size
             continue
         }

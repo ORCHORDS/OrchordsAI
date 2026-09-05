@@ -31,6 +31,9 @@ interface ManagedFileDAO {
     @Query("DELETE FROM managed_files WHERE relative_path = :relativePath")
     suspend fun deleteByPath(relativePath: String): Int
 
+    @Query("SELECT * FROM managed_files ORDER BY id ASC")
+    suspend fun getAll(): List<ManagedFileEntity>
+
     @Query("DELETE FROM managed_files WHERE folder = :folder")
     suspend fun deleteByFolder(folder: String): Int
 }

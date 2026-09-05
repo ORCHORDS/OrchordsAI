@@ -32,7 +32,6 @@ import com.orchords.orchordsai.data.files.FilesManager
 import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.service.WebServerService
 import com.orchords.orchordsai.utils.CrashHandler
-import com.orchords.orchordsai.utils.DatabaseUtil
 import com.orchords.orchordsai.utils.StartupSoundPlayer
 import com.orchords.orchordsai.data.repository.WorkspaceRepository
 import com.orchords.workspace.WorkspaceManager
@@ -67,9 +66,6 @@ class OrchordsAIApp : Application() {
         }
 
         this.createNotificationChannel()
-
-        // set cursor window size to 32MB
-        DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
 
         // install crash handler
         CrashHandler.install(this)

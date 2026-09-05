@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import com.orchords.ai.ui.UIMessage
 import com.orchords.orchordsai.data.db.AppDatabase
+import com.orchords.orchordsai.data.db.MessageNodePayloadStore
 import com.orchords.orchordsai.data.db.fts.MessageFtsManager
 import com.orchords.orchordsai.data.db.fts.MessageSearchSort
 import com.orchords.orchordsai.data.db.dao.ConversationDAO
@@ -33,7 +34,19 @@ class ConversationRepository(
     private val database: AppDatabase,
     private val filesManager: FilesManager,
     private val messageFtsManager: MessageFtsManager,
+    private val messageNodePayloadStore: MessageNodePayloadStore,
 ) {
+
+    private val payloadSource = object : ConversationNodePayloadSource {
+        override suspend fun resolve(entity: MessageNodeEntity): String? {
+            val blobId = entity.payloadBlobId
+            if (blobId != null) {
+                return messageNodePayloadStore.load(blobId)
+            }
+            val inline = entity.messages
+            return inline.takeIf { it.isNotEmpty() }
+        }
+    }
     companion object {
         private const val PAGE_SIZE = 20
         private const val INITIAL_LOAD_SIZE = 40
@@ -300,20 +313,43 @@ class ConversationRepository(
             .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
             .toSet()
         return database.withTransaction {
-            loadConversationNodesSafely(messageNodeDAO, conversationId, favoriteNodeIds)
+            loadConversationNodesSafely(messageNodeDAO, conversationId, favoriteNodeIds, payloadSource)
         }
     }
 
     private suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) {
-        messageNodeDAO.insertAll(nodes.mapIndexed { index, node ->
+        // Capture the previous blob ids BEFORE the row mutation so we can clean them up
+        // after the transaction succeeds. `updateConversation` does
+        // `deleteByConversation` then re-inserts, so anything previously externalized
+        // becomes orphaned if we don't track it here.
+        val previousBlobIds: Set<Long> = if (nodes.isNotEmpty()) {
+            messageNodeDAO.getNodesMetaOfConversation(conversationId)
+                .mapNotNull { it.payloadBlobId }
+                .toSet()
+        } else emptySet()
+
+        // Externalize JSON for oversized nodes outside the DB transaction; the
+        // store does I/O on Dispatchers.IO via FilesManager. Failures here must
+        // surface so we never store a dangling reference.
+        val prepared = nodes.mapIndexed { index, node ->
+            val nodeId = node.id.toString()
+            val json = JsonInstant.encodeToString(node.messages)
+            val blobId = messageNodePayloadStore.store(nodeId, json)
             MessageNodeEntity(
-                id = node.id.toString(),
+                id = nodeId,
                 conversationId = conversationId,
                 nodeIndex = index,
-                messages = JsonInstant.encodeToString(node.messages),
-                selectIndex = node.selectIndex
+                messages = if (blobId == null) json else "",
+                selectIndex = node.selectIndex,
+                payloadBlobId = blobId,
             )
-        })
+        }
+        messageNodeDAO.insertAll(prepared)
+
+        // Best-effort orphan cleanup. Removing a managed file after the row
+        // has been replaced is safe; failing to remove it leaves a harmless
+        // dangling blob that the orphan-row cleanup pass can pick up later.
+        previousBlobIds.forEach { messageNodePayloadStore.delete(it) }
     }
 }
 
