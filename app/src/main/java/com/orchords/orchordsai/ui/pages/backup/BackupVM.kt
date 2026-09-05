@@ -82,7 +82,7 @@ class BackupVM(
 
     suspend fun backup() {
         webDavSync.backup(settings.value.webDavConfig)
-        recordBackupTime()
+        recordDeliveredBackupTime()
     }
 
     suspend fun restore(item: WebDavBackupItem) {
@@ -93,12 +93,18 @@ class BackupVM(
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(
+    /**
+     * Stages a local backup ZIP into the cache and returns its [File]. The file is *not* yet
+     * delivered to any destination and [recordDeliveredBackupTime] must not be called for it.
+     *
+     * For historical reasons this used to advance `lastBackupTime` on the staging path, which
+     * suppressed the next [BackupReminderCard] prompt even when the user cancelled the SAF
+     * picker or the destination write failed. See issue #366.
+     */
+    suspend fun prepareLocalBackupFile(): File {
+        return webDavSync.prepareBackupFile(
             settings.value.webDavConfig.copy(items = localBackupItems.value)
         )
-        recordBackupTime()
-        return file
     }
 
     suspend fun restoreFromLocalFile(file: File) {
@@ -210,7 +216,7 @@ class BackupVM(
 
     suspend fun backupToS3() {
         s3Sync.backupToS3(settings.value.s3Config)
-        recordBackupTime()
+        recordDeliveredBackupTime()
     }
 
     suspend fun restoreFromS3(item: S3BackupItem) {
@@ -221,7 +227,14 @@ class BackupVM(
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)
     }
 
-    private suspend fun recordBackupTime() {
+    /**
+     * Marks the last backup delivery time. Callers MUST invoke this only after the backup
+     * archive has been confirmed written to its destination. See issue #366.
+     *
+     * Renamed from `recordBackupTime()` so the contract is explicit at every call site:
+     * "delivered" is what [BackupReminderCard] cares about, not "staged".
+     */
+    suspend fun recordDeliveredBackupTime() {
         settingsStore.update { settings ->
             settings.copy(
                 backupReminderConfig = settings.backupReminderConfig.copy(

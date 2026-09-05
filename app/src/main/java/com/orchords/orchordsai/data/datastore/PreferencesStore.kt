@@ -626,7 +626,21 @@ data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
-)
+) {
+    /**
+     * Returns true when the reminder should fire at [nowMs]. Pure so it is testable without an
+     * Android dependency. The reminder is "due" only when:
+     *  - it is enabled,
+     *  - at least [intervalDays] days have passed since [lastBackupTime].
+     * A zero `lastBackupTime` (never backed up) is always treated as due when enabled.
+     */
+    fun isReminderDue(nowMs: Long): Boolean {
+        if (!enabled) return false
+        if (lastBackupTime == 0L) return true
+        val intervalMs = intervalDays.toLong() * 24L * 60L * 60L * 1000L
+        return (nowMs - lastBackupTime) > intervalMs
+    }
+}
 
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }
 

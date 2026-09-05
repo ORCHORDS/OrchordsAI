@@ -32,7 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.data.datastore.WebDavConfig
 import com.orchords.orchordsai.ui.components.ui.CardGroup
@@ -67,17 +69,17 @@ fun ImportExportTab(
         uri?.let { targetUri ->
             scope.launch {
                 isExporting = true
+                var exportFile: File? = null
                 runCatching {
-                    val exportFile = vm.exportToFile()
-
-                    context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                        FileInputStream(exportFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
+                    val staged = vm.prepareLocalBackupFile()
+                    exportFile = staged
+                    withContext(Dispatchers.IO) {
+                        LocalBackupExporter.deliverOrThrow(
+                            source = staged,
+                            openSink = { context.contentResolver.openOutputStream(targetUri) },
+                        )
                     }
-
-                    exportFile.delete()
-
+                    vm.recordDeliveredBackupTime()
                     toaster.show(
                         resources.getString(R.string.backup_page_backup_success),
                         type = ToastType.Success
@@ -89,6 +91,7 @@ fun ImportExportTab(
                         type = ToastType.Error
                     )
                 }
+                runCatching { exportFile?.delete() }
                 isExporting = false
             }
         }
