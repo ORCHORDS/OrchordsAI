@@ -1,0 +1,105 @@
+name: Protected PR Verification
+
+# Required context names are job names, not workflow display names.
+# Keep this unfiltered: even a README change must receive a terminal result.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Main Verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+      - name: Verify application and provider behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :ai:test
+
+  build:
+    name: Daily Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+      - name: Validate unsigned APK and checksums without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon -PciVerify :app:assembleDebug
+          cd app/build/outputs/apk/debug
+          sha256sum -- *.apk > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          echo 'PR build validation only; no signed release or publication occurred.' >> "$GITHUB_STEP_SUMMARY"
+
+  citations:
+    name: Citation Integrity Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+      - name: Run citation integrity regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.orchords.orchordsai.ui.components.message.CitationScopeTest'
+
+  dependencies:
+    name: Dependency Submission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      # A skipped required job is reported as successful. Fail explicitly for
+      # forks until a trusted, no-checkout workflow_run submission relay exists.
+      # Never execute external PR build logic with a publication token.
+      - name: Require same-repository source before privileged execution
+        env:
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$PR_HEAD_REPOSITORY" ] || [ "$PR_HEAD_REPOSITORY" != "$TARGET_REPOSITORY" ]; then
+            echo '::error::External PR dependency submission requires a trusted no-checkout relay. No privileged build was executed.'
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+        with:
+          gradle: false
+          web: false
+      - name: Resolve and submit the actual dependency graph
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          dependency-graph: generate-and-submit
+          dependency-graph-continue-on-failure: false
