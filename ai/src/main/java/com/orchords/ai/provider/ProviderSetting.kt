@@ -109,6 +109,10 @@ sealed class ProviderSetting {
         // null → defer to the ModelRegistry denylist; non-null → force the choice.
         var supportsTemperature: Boolean? = null,
         var supportsTopP: Boolean? = null,
+        // null → send every tool (today's behavior). Non-null → cap the
+        // tools[] sent to the wire; the resolver still preserves any tool
+        // that is mid-flight in the conversation. See issue #359.
+        var maxToolsPerRequest: Int? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -179,6 +183,11 @@ sealed class ProviderSetting {
         // the call site; see GoogleProvider.
         var supportsTemperature: Boolean? = null,
         var supportsTopP: Boolean? = null,
+        // null → send every tool (today's behavior). Non-null → cap the
+        // functionDeclarations[] sent to the wire; the resolver still
+        // preserves any tool that is mid-flight in the conversation. The
+        // Gemini vendor hard cap (512) is enforced separately. See #359.
+        var maxToolsPerRequest: Int? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -245,6 +254,10 @@ sealed class ProviderSetting {
         // stays at the call site; see ClaudeProvider.
         var supportsTemperature: Boolean? = null,
         var supportsTopP: Boolean? = null,
+        // null → send every tool (today's behavior). Non-null → cap the
+        // tools[] sent to the wire; the resolver still preserves any tool
+        // that is mid-flight in the conversation. See issue #359.
+        var maxToolsPerRequest: Int? = null,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -283,7 +296,6 @@ sealed class ProviderSetting {
                 enabled = enabled,
                 name = name,
                 models = models,
-                balanceOption = balanceOption,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,

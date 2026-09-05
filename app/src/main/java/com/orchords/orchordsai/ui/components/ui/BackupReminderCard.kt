@@ -34,8 +34,7 @@ fun BackupReminderCard(
     val config = settings.backupReminderConfig
     var dismissed by remember { mutableStateOf(false) }
 
-    val isDue = config.enabled &&
-        (System.currentTimeMillis() - config.lastBackupTime) > config.intervalDays * 24L * 60 * 60 * 1000
+    val isDue = config.isReminderDue(System.currentTimeMillis())
 
     if (!isDue || dismissed) return
 

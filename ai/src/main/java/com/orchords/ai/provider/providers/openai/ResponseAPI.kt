@@ -31,6 +31,7 @@ import com.orchords.ai.provider.ProviderSetting
 import com.orchords.ai.provider.TextGenerationResult
 import com.orchords.ai.provider.TextGenerationParams
 import com.orchords.ai.provider.resolveRouteCapabilities
+import com.orchords.ai.provider.resolveToolBudget
 import com.orchords.ai.provider.stream.SseEvent
 import com.orchords.ai.provider.providers.PartGroup
 import com.orchords.ai.provider.providers.groupPartsByToolBoundary
@@ -254,7 +255,7 @@ class ResponseAPI(
             if (useFunctionTools || params.model.tools.isNotEmpty()) {
                 putJsonArray("tools") {
                     if (useFunctionTools) {
-                        params.tools.forEach { tool ->
+                        resolveToolBudget(params.tools, messages, providerSetting).forEach { tool ->
                             add(buildJsonObject {
                                 put("type", "function")
                                 put("name", tool.name)

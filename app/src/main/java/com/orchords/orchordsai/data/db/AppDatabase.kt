@@ -27,7 +27,7 @@ import com.orchords.orchordsai.data.db.migrations.Migration_22_23
 import com.orchords.orchordsai.data.db.migrations.Migration_8_9
 import com.orchords.orchordsai.utils.JsonInstant
 
-const val APP_DATABASE_SCHEMA_VERSION = 24
+const val APP_DATABASE_SCHEMA_VERSION = 25
 
 @Database(
     entities = [

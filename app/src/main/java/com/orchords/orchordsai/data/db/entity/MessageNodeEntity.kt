@@ -16,7 +16,10 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("conversation_id")]
+    indices = [
+        Index("conversation_id"),
+        Index("payload_blob_id"),
+    ]
 )
 data class MessageNodeEntity(
     @PrimaryKey
@@ -26,7 +29,14 @@ data class MessageNodeEntity(
     @ColumnInfo("node_index")
     val nodeIndex: Int,
     @ColumnInfo("messages")
-    val messages: String,  // JSON serialized List<UIMessage>
+    val messages: String,  // JSON serialized List<UIMessage>; empty when payloadBlobId != null
     @ColumnInfo("select_index")
-    val selectIndex: Int
+    val selectIndex: Int,
+    /**
+     * Foreign key to [ManagedFileEntity.id] when the JSON payload is externalized to
+     * `filesDir/managed/payloads/`. `null` means the [messages] column holds the JSON inline.
+     * Lookup goes through the [MessageNodePayloadStore] / [MessageNodePayloadResolver].
+     */
+    @ColumnInfo("payload_blob_id")
+    val payloadBlobId: Long? = null,
 )
